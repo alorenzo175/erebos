@@ -93,3 +93,8 @@ wheel/
 nabu.img
 .pytest_cache
 .python-version
+.ipynb_checkpoints/
+
+# Env
+.env
+.envrc
