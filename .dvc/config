@@ -1,8 +1,10 @@
 [core]
     analytics = false
-    remote = s3remote
+    remote = anon
 [cache]
-    type = "hardlink,symlink"
-['remote "s3remote"']
+    type = "symlink"
+['remote "s3"']
     url = s3://erebos/data
     endpointurl = https://s3.x.energy.arizona.edu
+['remote "anon"']
+    url = https://s3.x.energy.arizona.edu/erebos/data
