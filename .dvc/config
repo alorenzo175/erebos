@@ -1,0 +1,8 @@
+[core]
+    analytics = false
+    remote = s3remote
+[cache]
+    type = "hardlink,symlink"
+['remote "s3remote"']
+    url = s3://erebos/data
+    endpointurl = https://s3.x.energy.arizona.edu
