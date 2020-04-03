@@ -2,7 +2,7 @@
     analytics = false
     remote = anon
 [cache]
-    type = "symlink"
+    type = symlink
 ['remote "s3"']
     url = s3://erebos/data
     endpointurl = https://s3.x.energy.arizona.edu

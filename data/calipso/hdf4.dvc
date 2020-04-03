@@ -1,0 +1,7 @@
+md5: 7219e6248d7a3e1a8c74ab936bca58d6
+outs:
+- md5: 735935a42227f433c8daa0bf8730edfd.dir
+  path: hdf4
+  cache: true
+  metric: false
+  persist: false
