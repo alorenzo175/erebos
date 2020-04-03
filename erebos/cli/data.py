@@ -88,6 +88,3 @@ def fetch_multichannel_files_by_date(
         s3_bucket,
         callback=partial(_url_callback, callback_url),
     )
-
-
-# empts
