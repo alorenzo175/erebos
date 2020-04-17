@@ -88,3 +88,33 @@ def fetch_multichannel_files_by_date(
         s3_bucket,
         callback=partial(_url_callback, callback_url),
     )
+
+
+@data.command()
+@verbose
+@set_log_level
+@click.option("--calipso-glob", default="CAL*.nc")
+@click.option("--goes-glob", default="**/erebos_MCMIPC*.nc")
+@click.argument(
+    "calipso_directory",
+    type=PathParamType(exists=True, resolve_path=True, file_okay=False),
+)
+@click.argument(
+    "goes_directory",
+    type=PathParamType(exists=True, resolve_path=True, file_okay=False),
+)
+@click.argument(
+    "save_directory",
+    type=PathParamType(exists=True, writable=True, resolve_path=True, file_okay=False),
+)
+def generate_calipso_training_data(
+    calipso_directory, goes_directory, save_directory, calipso_glob, goes_glob
+):
+    """
+    Generate files of combined CALIPOS and GOES data to train cloud models
+    """
+    from erebos.prep import combine_calipso_goes_files
+
+    combine_calipso_goes_files(
+        calipso_directory, goes_directory, save_directory, goes_glob, calipso_glob
+    )

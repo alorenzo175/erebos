@@ -14,17 +14,19 @@ from erebos.adapters.goes import GOESFilename
 
 def match_goes_file(calipso_file, goes_files, max_diff="6min"):
     gt = np.asarray([f.start for f in goes_files])
-    with xr.open_dataset(calipso_file, engine="pynio") as cds:
+    with xr.open_dataset(calipso_file, engine="h5netcdf") as cds:
         ctime = pd.Timestamp(cds.erebos.time.data.min(), tz="UTC")
     diff = np.abs(gt - np.array(ctime))
     if diff.min() < pd.Timedelta(max_diff):
-        return goes_files[np.argmin(diff)].filename
+        gfile = goes_files[np.argmin(diff)]
+        return gfile.start, gfile.filename
     else:
-        return None
+        return None, None
 
 
 def translate_calipso_locations_to_apparent_position(
-        calipso_ds, goes_ds, fill_na=True, level=0):
+    calipso_ds, goes_ds, fill_na=True, level=0
+):
     # nan means no cloud
     cloud_heights = calipso_ds.erebos.cloud_top_altitude[:, level].values
     if fill_na:
@@ -47,19 +49,11 @@ def translate_calipso_locations_to_apparent_position(
 
 
 def translate_calipso_locations(calipso_ds, goes_ds):
-    cloud_locations = utils.RotatedECRPosition.from_geodetic(
-        calipso_ds.erebos.Latitude[:, 0].values,
+    goes_cloud_pos = goes_ds.erebos.crs.transform_points(
+        ccrs.Geodetic(),
         calipso_ds.erebos.Longitude[:, 0].values,
-        0.0,
+        calipso_ds.erebos.Latitude[:, 0].values,
     )
-    actual_cloud_pos = utils.find_actual_cloud_position(
-        calipso_ds.erebos.spacecraft_location, cloud_locations, cloud_heights
-    )
-    apparent_cloud_pos = utils.find_apparent_cloud_position(
-        goes_ds.erebos.spacecraft_location, actual_cloud_pos, terrain_height
-    )
-    alat, alon = apparent_cloud_pos.to_geodetic()
-    goes_cloud_pos = goes_ds.erebos.crs.transform_points(ccrs.Geodetic(), alon, alat)
     return goes_cloud_pos[:, :2]
 
 
@@ -100,19 +94,28 @@ def map_values_to_index_num(vals, index, first):
         raise TypeError("vals must be a numpy array")
 
 
-def calipso_indices(calipso_ds, goes_ds, level=0, k=1, dub=1.3e3):
-    cloud_pts = translate_calipso_locations(calipso_ds, goes_ds, level=level)
+def calipso_indices(calipso_ds, goes_ds, k=1, dub=1.3e3):
+    cloud_pts = translate_calipso_locations(calipso_ds, goes_ds)
     dist, inds = goes_ds.erebos.kdtree.query(
         cloud_pts.astype("float32"), k=k, distance_upper_bound=dub
     )
     return inds
 
 
+def _convert_attrs(attrs):
+    # h5netcdf/h5py does not like string arrays for attrs
+    out = attrs.copy()
+    for k, v in attrs.items():
+        if isinstance(v, np.ndarray) and v.dtype.kind in ('S', 'U'):
+            out[k] = list(v)
+    return out
+
+
 def make_combined_dataset(
     calipso_file, goes_file, calipso_mean_vars, calipso_first_vars, level=0
 ):
-    calipso_ds = xr.open_dataset(calipso_file, engine="pynio")
-    goes_ds = xr.open_dataset(goes_file, engine="netcdf4")
+    calipso_ds = xr.open_dataset(calipso_file, engine="h5netcdf")
+    goes_ds = xr.open_dataset(goes_file, engine="h5netcdf")
     # include the nearest 4 points in the goes file
     inds = calipso_indices(calipso_ds, goes_ds, k=4, dub=2e3)
     over_ind = goes_ds.dims["x"] * goes_ds.dims["y"]
@@ -126,7 +129,7 @@ def make_combined_dataset(
         vals = var[:, level].values.astype("float32")
         avg, ninds = map_values_to_index_num(vals, inds[:, 0], False)
         assert (ninds == inds[uniq, 0]).all()
-        da = xr.DataArray(avg[~do_not_include], dims=("rec"), attrs=var.attrs)
+        da = xr.DataArray(avg[~do_not_include], dims=("rec"), attrs=_convert_attrs(var.attrs))
         da.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
         vars_[v] = da
 
@@ -135,7 +138,7 @@ def make_combined_dataset(
         vals = var[:, 0].values
         avg, ninds = map_values_to_index_num(vals, inds[:, 0], True)
         assert (ninds == inds[uniq, 0]).all()
-        da = xr.DataArray(avg[~do_not_include], dims=("rec"), attrs=var.attrs)
+        da = xr.DataArray(avg[~do_not_include], dims=("rec"), attrs=_convert_attrs(var.attrs))
         da.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
         vars_[v] = da
 
@@ -166,8 +169,8 @@ def make_combined_dataset(
         coords=coords,
         attrs={
             "goes_time": str(goes_ds.erebos.t.values),
-            "goes_file": str(goes_file),
-            "calipso_file": str(calipso_file),
+            "goes_file": str(goes_file.name),
+            "calipso_file": str(calipso_file.name),
             "erebos_version": __version__,
         },
     )
@@ -181,17 +184,17 @@ def combine_calipso_goes_files(
 ):
     calipso_files = list(calipso_dir.glob(calipso_glob))[slice(*limits)]
     goes_files = [
-        GOESFilename(f, start=pd.Timestamp(f.name.split("_")[0], tz="UTC"))
+        GOESFilename(f, start=pd.Timestamp(f.stem.split("_")[-1], tz="UTC"))
         for f in goes_dir.glob(goes_glob)
     ]
     for cfile in calipso_files:
         logging.info("Processing %s", cfile)
-        gfile = match_goes_file(cfile, goes_files)
+        gtime, gfile = match_goes_file(cfile, goes_files)
         if gfile is None:
             logging.warning("No matching GOES file for %s", cfile)
             continue
 
-        filename = save_dir / gfile.name
+        filename = save_dir / f'colocated_calipso_goes_{gtime.strftime("%Y%m%dT%H%M%SZ")}.nc'
 
         if filename.exists():
             logging.info("File already exists at %s", filename)
@@ -211,5 +214,5 @@ def combine_calipso_goes_files(
             ["cloud_type", "day_night_flag", "surface_elevation"],
         )
         logging.info("Saving file to %s", filename)
-        ds.to_netcdf(filename, engine="netcdf4")
+        ds.to_netcdf(filename, engine="h5netcdf")
         ds.close()
