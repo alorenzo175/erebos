@@ -106,7 +106,7 @@ def _convert_attrs(attrs):
     # h5netcdf/h5py does not like string arrays for attrs
     out = attrs.copy()
     for k, v in attrs.items():
-        if isinstance(v, np.ndarray) and v.dtype.kind in ('S', 'U'):
+        if isinstance(v, np.ndarray) and v.dtype.kind in ("S", "U"):
             out[k] = list(v)
     return out
 
@@ -129,7 +129,9 @@ def make_combined_dataset(
         vals = var[:, level].values.astype("float32")
         avg, ninds = map_values_to_index_num(vals, inds[:, 0], False)
         assert (ninds == inds[uniq, 0]).all()
-        da = xr.DataArray(avg[~do_not_include], dims=("rec"), attrs=_convert_attrs(var.attrs))
+        da = xr.DataArray(
+            avg[~do_not_include], dims=("rec"), attrs=_convert_attrs(var.attrs)
+        )
         da.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
         vars_[v] = da
 
@@ -138,7 +140,9 @@ def make_combined_dataset(
         vals = var[:, 0].values
         avg, ninds = map_values_to_index_num(vals, inds[:, 0], True)
         assert (ninds == inds[uniq, 0]).all()
-        da = xr.DataArray(avg[~do_not_include], dims=("rec"), attrs=_convert_attrs(var.attrs))
+        da = xr.DataArray(
+            avg[~do_not_include], dims=("rec"), attrs=_convert_attrs(var.attrs)
+        )
         da.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
         vars_[v] = da
 
@@ -194,7 +198,9 @@ def combine_calipso_goes_files(
             logging.warning("No matching GOES file for %s", cfile)
             continue
 
-        filename = save_dir / f'colocated_calipso_goes_{gtime.strftime("%Y%m%dT%H%M%SZ")}.nc'
+        filename = (
+            save_dir / f'colocated_calipso_goes_{gtime.strftime("%Y%m%dT%H%M%SZ")}.nc'
+        )
 
         if filename.exists():
             logging.info("File already exists at %s", filename)
