@@ -19,10 +19,10 @@ def get_processing_func(ds):
     raise TypeError("Not a GOES or Calipso dataset")
 
 
-def construct_tree(ds):
+def construct_tree(x, y):
     from pykdtree.kdtree import KDTree
 
-    X, Y = np.meshgrid(ds.x.values, ds.y.values)
+    X, Y = np.meshgrid(x.values, y.values)
     pts = np.asarray([X.reshape(-1), Y.reshape(-1)]).T
     tree = KDTree(pts)
     return tree
@@ -76,7 +76,7 @@ class ErebosDataset:
     @property
     def kdtree(self):
         if not hasattr(self, "_kdtree"):
-            self._kdtree = construct_tree(self._xarray_obj)
+            self._kdtree = construct_tree(self.x, self.y)
         return self._kdtree
 
     def find_nearest_xy(self, lons, lats):
