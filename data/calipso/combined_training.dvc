@@ -1,0 +1,12 @@
+md5: 3f2b2a484aea4efd5bf8c2d23620bc96
+cmd: erebos data generate-calipso-training-data nc4 ../multichannel combined_training
+  -v
+deps:
+- md5: a820596a248635c4992dee996dbb79ba.dir
+  path: nc4
+outs:
+- md5: c9b172a083d0b543522a7e1dd310393c.dir
+  path: combined_training
+  cache: true
+  metric: false
+  persist: true
