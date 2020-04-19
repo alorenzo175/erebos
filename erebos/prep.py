@@ -12,6 +12,9 @@ from erebos import utils, __version__
 from erebos.adapters.goes import GOESFilename
 
 
+logger = logging.getLogger(__name__)
+
+
 def match_goes_file(calipso_file, goes_files, max_diff="6min"):
     gt = np.asarray([f.start for f in goes_files])
     with xr.open_dataset(calipso_file, engine="h5netcdf") as cds:
@@ -192,10 +195,10 @@ def combine_calipso_goes_files(
         for f in goes_dir.glob(goes_glob)
     ]
     for cfile in calipso_files:
-        logging.info("Processing %s", cfile)
+        logger.info("Processing %s", cfile)
         gtime, gfile = match_goes_file(cfile, goes_files)
         if gfile is None:
-            logging.warning("No matching GOES file for %s", cfile)
+            logger.warning("No matching GOES file for %s", cfile)
             continue
 
         filename = (
@@ -203,7 +206,7 @@ def combine_calipso_goes_files(
         )
 
         if filename.exists():
-            logging.info("File already exists at %s", filename)
+            logger.info("File already exists at %s", filename)
             continue
 
         ds = make_combined_dataset(
@@ -219,6 +222,55 @@ def combine_calipso_goes_files(
             ],
             ["cloud_type", "day_night_flag", "surface_elevation"],
         )
-        logging.info("Saving file to %s", filename)
+        logger.info("Saving file to %s", filename)
         ds.to_netcdf(filename, engine="h5netcdf")
         ds.close()
+
+
+def load_combined_files(combined_dir):
+    opts = []
+    for file_ in combined_dir.glob("*.nc"):
+        with xr.open_dataset(file_, engine="h5netcdf") as ds:
+            ftime = pd.Timestamp(ds.goes_time, tz="UTC")
+            recs = ds.dims["rec"]
+        opts.append((str(file_), ftime, recs))
+    df = pd.DataFrame(opts, columns=["filename", "file_time", "num_records"])
+    return df
+
+
+def filter_times(combined_df, daytime_only):
+    if not daytime_only:
+        return combined_df
+    else:
+        return (
+            combined_df.reset_index()
+            .set_index("file_time", drop=False)
+            .tz_convert("America/Phoenix")
+            .between_time("10:00", "15:00")
+            .set_index("index")
+        )
+
+
+def split_data(combined_df, train_pct, test_pct, seed):
+    len_ = len(combined_df)
+    train, test, val = np.split(
+        combined_df.sample(frac=1, random_state=seed),
+        [int(train_pct / 100 * len_), int((train_pct + test_pct) / 100 * len_)],
+    )
+    tot = combined_df.num_records.sum()
+    logger.info(
+        "Split with %0.1f%% in training, %0.1f%% in test, %0.1f%% in validation",
+        train.num_records.sum() / tot * 100,
+        test.num_records.sum() / tot * 100,
+        val.num_records.sum() / tot * 100,
+    )
+    return train, test, val
+
+
+def concat_datasets(datasets, outpath):
+    logger.info("Saving data to %s", outpath)
+    ds = xr.open_mfdataset(
+        datasets, engine="h5netcdf", combine="nested", concat_dim="rec"
+    )
+    ds.attrs = {"erebos_version": __version__, "combined_calipso_files": list(datasets)}
+    ds.to_netcdf(outpath, engine="h5netcdf")

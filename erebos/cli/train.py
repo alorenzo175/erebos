@@ -125,6 +125,40 @@ def train():
 @train.command()
 @verbose
 @set_log_level
+@click.argument(
+    "combined_dir", type=PathParamType(exists=True, resolve_path=True, file_okay=False),
+)
+@click.argument(
+    "save_directory",
+    type=PathParamType(exists=True, writable=True, resolve_path=True, file_okay=False),
+)
+@click.option("--train-pct", type=int, default=80)
+@click.option("--test-pct", type=int, default=10)
+@click.option("--daytime-only", is_flag=True, default=False)
+@click.option("--seed", type=int, default=0)
+def split_dataset(
+    combined_dir, save_directory, train_pct, test_pct, seed, daytime_only
+):
+    """
+    Split dataset into train, test, and validation sets combining each into 
+    a single netCDF4 file. The splitting will be performed by combined calipso
+    run to keep calipso scans together. The split percentages are rough guides
+    since each file has a variable number of points.
+    """
+    from erebos import prep
+
+    df = prep.load_combined_files(combined_dir)
+    train, test, val = prep.split_data(
+        prep.filter_times(df, daytime_only), train_pct, test_pct, seed
+    )
+    prep.concat_datasets(train.filename, save_directory / "train.nc")
+    prep.concat_datasets(test.filename, save_directory / "test.nc")
+    prep.concat_datasets(val.filename, save_directory / "validate.nc")
+
+
+@train.command()
+@verbose
+@set_log_level
 @mlflow_options
 def cloud_mask(**kwargs):
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
