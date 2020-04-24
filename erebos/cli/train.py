@@ -1,9 +1,11 @@
 import logging
 import os
+from pathlib import Path
 
 
 import click
 import mlflow
+import optuna
 
 
 from erebos.cli.base import (
@@ -14,6 +16,8 @@ from erebos.cli.base import (
     PathParamType,
     run_loop,
 )
+from erebos.ml_models import training
+from erebos.ml_models.utils import mlflow_callback
 
 
 logger = logging.getLogger(__name__)
@@ -160,9 +164,33 @@ def split_dataset(
 @verbose
 @set_log_level
 @mlflow_options
-def cloud_mask(**kwargs):
+@click.argument("study_name")
+@click.option("--n-trials", type=int, default=100, help="Number of trials")
+@click.option("--n-jobs", type=int, default=1, help="Number of parallel jobs")
+@click.option(
+    "--train-file",
+    type=PathParamType(exists=True, resolve_path=True),
+    default=Path(__file__).parent / "../../data/cloud_mask/train.nc",
+)
+@click.option(
+    "--validate-file",
+    type=PathParamType(exists=True, resolve_path=True),
+    default=Path(__file__).parent / "../../data/cloud_mask/validate.nc",
+)
+def cloud_mask(study_name, n_trials, n_jobs, train_file, validate_file):
+
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment("erebos-cloud-mask")
-    with mlflow.start_run():
-        mlflow.log_param("a", 12)
-        mlflow.log_artifact("rep.json")
+    study = optuna.create_study(
+        study_name=study_name, direction="maximize", load_if_exists=True
+    )
+    study.set_user_attr("seed", 6626)
+    study.set_user_attr("train_file", str(train_file.absolute()))
+    study.set_user_attr("validation_file", str(validate_file.absolute()))
+    study.set_user_attr("optimization_metric", "roc_auc")
+    study.set_user_attr(
+        "extra_metrics", ["f1", "accuracy", "precision", "neg_brier_score"]
+    )
+    study.optimize(
+        training.cloud_mask.objective, n_trials=n_trials, n_jobs=n_jobs,
+    )
