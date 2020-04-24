@@ -48,24 +48,15 @@ def objective(trial, extra_metrics=None, save_model=False):
     )
     pipe_steps = [("scale", getattr(preprocessing, scaler_name)())]
 
-    clf_name = trial.suggest_categorical("classifier", ["MLP"])
-    if clf_name == "MLP":
-        activation = trial.suggest_categorical(
-            "mlp_activation", ["relu", "logistic", "tanh"]
-        )
-        solver = trial.suggest_categorical("mlp_solver", ["adam", "sgd"])
-        layer_size = trial.suggest_int("mlp_layer_size", 5, 25, 10)
-        clf = neural_network.MLPClassifier(
-            hidden_layer_sizes=(layer_size,),
-            activation=activation,
-            solver=solver,
-            learning_rate="adaptive",
-            shuffle=True,
-            max_iter=500,
-        )
-    else:
-        max_depth = int(trial.suggest_loguniform("rf_max_depth", 2, 32))
-        clf = ensemble.RandomForestClassifier(max_depth=max_depth)
+    layer_size = trial.suggest_int("mlp_layer_size", 50, 500, 10)
+    clf = neural_network.MLPClassifier(
+        hidden_layer_sizes=(layer_size,),
+        activation="relu",
+        solver="adam",
+        learning_rate="adaptive",
+        shuffle=True,
+        max_iter=1000,
+    )
     pipe_steps.append(("classifier", clf))
 
     model = pipeline.Pipeline(pipe_steps)

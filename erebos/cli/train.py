@@ -17,7 +17,6 @@ from erebos.cli.base import (
     run_loop,
 )
 from erebos.ml_models import training
-from erebos.ml_models.utils import mlflow_callback
 
 
 logger = logging.getLogger(__name__)
@@ -144,7 +143,7 @@ def split_dataset(
     combined_dir, save_directory, train_pct, test_pct, seed, daytime_only
 ):
     """
-    Split dataset into train, test, and validation sets combining each into 
+    Split dataset into train, test, and validation sets combining each into
     a single netCDF4 file. The splitting will be performed by combined calipso
     run to keep calipso scans together. The split percentages are rough guides
     since each file has a variable number of points.
