@@ -54,7 +54,7 @@ def objective(trial, extra_metrics=None, save_model=False):
             "mlp_activation", ["relu", "logistic", "tanh"]
         )
         solver = trial.suggest_categorical("mlp_solver", ["adam", "sgd"])
-        layer_size = trial.suggest_int("mlp_layer_size", 50, 250, 10)
+        layer_size = trial.suggest_int("mlp_layer_size", 5, 25, 10)
         clf = neural_network.MLPClassifier(
             hidden_layer_sizes=(layer_size,),
             activation=activation,

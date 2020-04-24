@@ -164,7 +164,7 @@ def split_dataset(
 @verbose
 @set_log_level
 @mlflow_options
-@click.argument("study_name")
+@click.argument("experiment_name")
 @click.option("--n-trials", type=int, default=100, help="Number of trials")
 @click.option("--n-jobs", type=int, default=1, help="Number of parallel jobs")
 @click.option(
@@ -177,13 +177,14 @@ def split_dataset(
     type=PathParamType(exists=True, resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/validate.nc",
 )
-def cloud_mask(study_name, n_trials, n_jobs, train_file, validate_file):
+def cloud_mask(experiment_name, n_trials, n_jobs, train_file, validate_file):
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
-    mlflow.set_experiment("erebos-cloud-mask")
+    mlflow.set_experiment(experiment_name)
     study = optuna.create_study(
-        study_name=study_name, direction="maximize", load_if_exists=True
+        study_name=experiment_name, direction="maximize", load_if_exists=True
     )
+    study.set_user_attr("model", "erebos_cloud_mask")
     study.set_user_attr("seed", 6626)
     study.set_user_attr("train_file", str(train_file.absolute()))
     study.set_user_attr("validation_file", str(validate_file.absolute()))
