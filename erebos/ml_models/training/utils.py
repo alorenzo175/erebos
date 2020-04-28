@@ -1,6 +1,11 @@
-import time
 from functools import wraps
+from pathlib import Path
+import tempfile
+import time
+
+
 import mlflow
+import pkg_resources
 import optuna
 
 
@@ -37,6 +42,14 @@ def log_to_mlflow(f):
             }
             tags.update(distributions)
             mlflow.set_tags(tags)
+            installed_packages = [
+                f"{d.project_name}=={d.version}" for d in pkg_resources.working_set
+            ]
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tfile = Path(tmpdir) / "versions.txt"
+                with open(tfile, "w") as tf:
+                    tf.write("\n".join(installed_packages))
+                mlflow.log_artifact(str(tfile))
         return score
 
     return wrapper
