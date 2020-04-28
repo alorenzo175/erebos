@@ -37,6 +37,80 @@ class EnvOption(click.Option):
         super().__init__(*args, **kwargs)
 
 
+def set_mysql_url(ctx, param, value):
+    mysql_keys = [k for k in ctx.params if k.startswith("mysql")]
+    mysql_params = {k: ctx.params.pop(k) for k in mysql_keys}
+
+    if value:
+        storage_url = "mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}".format(
+            **mysql_params
+        )
+    else:
+        storage_url = None
+    ctx.params["mysql_storage_url"] = storage_url
+
+
+def mysql_options(cmd):
+    """Combine mysql options into a single decorator"""
+
+    def options_wrapper(f):
+        decs = [
+            click.option(
+                "--use-mysql/--no-use-mysql",
+                default=False,
+                envvar="USE_MYSQL_BACKEND",
+                required=True,
+                show_envvar=True,
+                expose_value=False,
+                callback=set_mysql_url,
+            ),
+            click.option(
+                "--mysql-user",
+                envvar="MYSQL_USERNAME",
+                default="erebos",
+                is_eager=True,
+                show_envvar=True,
+                required=True,
+            ),
+            click.option(
+                "--mysql-password",
+                envvar="MYSQL_PASSWORD",
+                is_eager=True,
+                show_envvar=True,
+                required=True,
+            ),
+            click.option(
+                "--mysql-port",
+                envvar="MYSQL_PORT",
+                default=3306,
+                is_eager=True,
+                show_envvar=True,
+                required=True,
+            ),
+            click.option(
+                "--mysql-database",
+                envvar="MYSQL_DATABASE",
+                default="erebos",
+                is_eager=True,
+                show_envvar=True,
+                required=True,
+            ),
+            click.option(
+                "--mysql-host",
+                envvar="MYSQL_HOST",
+                default="127.0.0.1",
+                is_eager=True,
+                show_envvar=True,
+                required=True,
+            ),
+        ]
+        for dec in reversed(decs):
+            f = dec(f)
+        return f
+
+    return options_wrapper(cmd)
+
+
 def mlflow_options(cmd):
     """Combine mlflow options into a single decorator"""
 
@@ -163,6 +237,7 @@ def split_dataset(
 @verbose
 @set_log_level
 @mlflow_options
+@mysql_options
 @click.argument("experiment_name")
 @click.option("--n-trials", type=int, default=100, help="Number of trials")
 @click.option("--n-jobs", type=int, default=1, help="Number of parallel jobs")
@@ -176,12 +251,17 @@ def split_dataset(
     type=PathParamType(exists=True, resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/validate.nc",
 )
-def cloud_mask(experiment_name, n_trials, n_jobs, train_file, validate_file):
+def cloud_mask(
+    experiment_name, n_trials, n_jobs, train_file, validate_file, mysql_storage_url
+):
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment(experiment_name)
     study = optuna.create_study(
-        study_name=experiment_name, direction="maximize", load_if_exists=True
+        study_name=experiment_name,
+        direction="maximize",
+        load_if_exists=True,
+        storage=mysql_storage_url,
     )
     study.set_user_attr("model", "erebos_cloud_mask")
     study.set_user_attr("seed", 6626)
