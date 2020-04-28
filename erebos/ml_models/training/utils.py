@@ -21,7 +21,7 @@ def mlflow_callback(study, trial):
 def log_to_mlflow(f):
     @wraps(f)
     def wrapper(trial):
-        with mlflow.start_run(run_name=str(trial.number)):
+        with mlflow.start_run(run_name=str(trial.number), nested=True):
             start = time.time()
             score = f(
                 trial,
