@@ -1,0 +1,14 @@
+Bootstrap: docker
+From: quay.io/uapowerforecasting/erebos:latest
+Stage: build
+
+%setup
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/app-root/src
+    rsync -r --exclude=data/ --exclude=.dvc/ . ${SINGULARITY_ROOTFS}/opt/app-root/src/.
+
+%post
+    /opt/app-root/bin/pip install -r /opt/app-root/src/requirements.txt
+    /opt/app-root/bin/pip install /opt/app-root/src
+
+%runscript
+    /opt/app-root/bin/python -c "from erebos import __version__; print(__version__)"
