@@ -4,7 +4,7 @@ Stage: build
 
 %setup
     mkdir -p ${SINGULARITY_ROOTFS}/opt/app-root/src
-    rsync -r --exclude=data/ --exclude=.dvc/ . ${SINGULARITY_ROOTFS}/opt/app-root/src/.
+    rsync -r --exclude=.dvc/ --include=.dvc/config --include=.dvc/.gitignore . ${SINGULARITY_ROOTFS}/opt/app-root/src/.
 
 %post
     /opt/app-root/bin/pip install -r /opt/app-root/src/requirements.txt
