@@ -48,7 +48,7 @@ def objective(trial, extra_metrics=None, save_model=False):
     )
     pipe_steps = [("scale", getattr(preprocessing, scaler_name)())]
 
-    layer_size = trial.suggest_int("mlp_layer_size", 50, 500, 10)
+    layer_size = trial.suggest_int("mlp_layer_size", 5, 500, 10)
     clf = neural_network.MLPClassifier(
         hidden_layer_sizes=(layer_size,),
         activation="relu",
@@ -73,8 +73,11 @@ def objective(trial, extra_metrics=None, save_model=False):
         mlflow.log_metrics(allscores)
     if save_model:
         with tempfile.TemporaryDirectory() as tmpdir:
+            tmplogfile = Path(tmpdir) / "model.txt"
+            with open(tmplogfile, "w") as f:
+                f.write(str(model))
             tmpfile = Path(tmpdir) / "cloud_mask.joblib"
             joblib.dump(model, tmpfile, compress=True)
-            mlflow.log_artifact(str(tmpfile))
+            mlflow.log_artifacts(tmpdir)
 
     return score
