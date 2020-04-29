@@ -37,11 +37,11 @@ def load_data(dataset):
 
 
 @log_to_mlflow
-def objective(trial, extra_metrics=None, save_model=False):
+def objective(trial, train_file, validate_file, extra_metrics=None, save_model=False):
     user_attrs = trial.study.user_attrs
     np.random.seed(user_attrs["seed"])
-    X, y = load_data(user_attrs["train_file"])
-    X_val, y_val = load_data(user_attrs["validation_file"])
+    X, y = load_data(train_file)
+    X_val, y_val = load_data(validate_file)
 
     scaler_name = trial.suggest_categorical(
         "scaler", ["StandardScaler", "RobustScaler"]

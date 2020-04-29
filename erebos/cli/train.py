@@ -1,3 +1,4 @@
+from functools import partial
 import logging
 import os
 from pathlib import Path
@@ -272,5 +273,7 @@ def cloud_mask(
         "extra_metrics", ["f1", "accuracy", "precision", "neg_brier_score"]
     )
     study.optimize(
-        training.cloud_mask.objective, n_trials=n_trials, n_jobs=n_jobs,
+        partial(training.cloud_mask.objective, train_file, validate_file),
+        n_trials=n_trials,
+        n_jobs=n_jobs,
     )

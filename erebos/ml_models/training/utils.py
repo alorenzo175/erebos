@@ -20,11 +20,13 @@ def mlflow_callback(study, trial):
 
 def log_to_mlflow(f):
     @wraps(f)
-    def wrapper(trial):
+    def wrapper(trial, train_file, validate_file):
         with mlflow.start_run(run_name=str(trial.number), nested=True):
             start = time.time()
             score = f(
                 trial,
+                train_file,
+                validate_file,
                 extra_metrics=trial.study.user_attrs.get("extra_metrics", []),
                 save_model=True,
             )
