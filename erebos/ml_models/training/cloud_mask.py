@@ -48,7 +48,7 @@ def null(trial, X, y):
         constant = trial.suggest_int("dummy_constant", 0, 1)
     else:
         constant = 0
-    clf = dummy.DummyClassifier(strategy, constant)
+    clf = dummy.DummyClassifier(strategy, constant=constant)
     model = pipeline.Pipeline([("classifier", clf)])
     logger.info("Fitting pipeline %s", str(model))
     model.fit(X, y)
