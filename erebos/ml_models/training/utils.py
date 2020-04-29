@@ -9,9 +9,17 @@ import pkg_resources
 import optuna
 
 
+from erebos._version import get_versions
+
+git_commit = get_versions()["full-revisionid"]
+if get_versions()["dirty"]:
+    git_commit += ".dirty"
+
+
 @contextmanager
 def log_to_mlflow(trial):
     with mlflow.start_run(run_name=str(trial.number), nested=True):
+        mlflow.set_tag("mlflow.source.git.commit", git_commit)
         start = time.time()
         yield
         duration = time.time() - start
