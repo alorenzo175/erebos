@@ -6,6 +6,7 @@ import tempfile
 import joblib
 import numpy as np
 import mlflow
+from sklearn.experimental import enable_hist_gradient_boosting
 from sklearn import (
     preprocessing,
     pipeline,
@@ -78,6 +79,24 @@ def sgd(trial, X, y):
     return model
 
 
+def hist_gradient_boosting(trial, X, y):
+    pipe_steps = [("scale", preprocessing.StandardScaler())]
+
+    learning_rate = trial.suggest_loguniform("hgb_learning_rate", 1e-5, 1)
+    l2 = trial.suggest_loguniform("hgb_l2", 1e-4, 1)
+    clf = ensemble.HistGradientBoostingClassifier(
+        learning_rate=learning_rate,
+        l2_regularization=l2,
+        scoring=trial.study.user_attrs["optimization_metric"],
+        n_iter_no_change=5,
+    )
+    pipe_steps.append(("classifier", clf))
+    model = pipeline.Pipeline(pipe_steps)
+    logger.info("Fitting pipeline %s", str(model))
+    model.fit(X, y)
+    return model
+
+
 def objective(trial, train_file, validate_file, classifier_name):
     user_attrs = trial.study.user_attrs
     np.random.seed(user_attrs["seed"])
@@ -89,7 +108,7 @@ def objective(trial, train_file, validate_file, classifier_name):
             classifier_name = trial.suggest_categorical("classifier", classifier_name)
         else:
             mlflow.log_param("classifier", classifier_name)
-        objective_func = classifiers[classifier_name]
+        objective_func = globals()[classifier_name]
         model = objective_func(trial, X, y)
         scorer = metrics.check_scoring(model, scoring=user_attrs["optimization_metric"])
         score = scorer(model, X_val, y_val)
@@ -111,6 +130,3 @@ def objective(trial, train_file, validate_file, classifier_name):
             joblib.dump(model, tmpfile, compress=True)
             mlflow.log_artifacts(tmpdir)
     return score
-
-
-classifiers = {"mlp": mlp, "sgd": sgd}
