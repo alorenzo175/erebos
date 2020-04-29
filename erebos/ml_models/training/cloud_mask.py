@@ -13,6 +13,8 @@ from sklearn import (
     metrics,
     neural_network,
     ensemble,
+    svm,
+    linear_model,
 )
 import xarray as xr
 
@@ -35,7 +37,7 @@ def load_data(dataset):
     return X, y
 
 
-def mlp_objective(trial, X, y):
+def mlp(trial, X, y):
     pipe_steps = [("scale", preprocessing.StandardScaler())]
     whiten = trial.suggest_categorical("whiten", [True, False])
     if whiten:
@@ -59,14 +61,35 @@ def mlp_objective(trial, X, y):
     return model
 
 
-def objective(trial, train_file, validate_file, objective_func):
+def sgd(trial, X, y):
+    pipe_steps = [("scale", preprocessing.StandardScaler())]
+
+    alpha = trial.suggest_loguniform("sgd_alpha", 1e-5, 1)
+    loss = trial.suggest_categorical(
+        "sgd_loss", ["hinge", "squared_hinge", "perceptron", "modified_huber", "log"]
+    )
+    clf = linear_model.SGDClassifier(
+        alpha=alpha, loss=loss, fit_intercept=False, n_jobs=-1, early_stopping=True
+    )
+    pipe_steps.append(("classifier", clf))
+    model = pipeline.Pipeline(pipe_steps)
+    logger.info("Fitting pipeline %s", str(model))
+    model.fit(X, y)
+    return model
+
+
+def objective(trial, train_file, validate_file, classifier_name):
     user_attrs = trial.study.user_attrs
     np.random.seed(user_attrs["seed"])
     X, y = load_data(train_file)
     X_val, y_val = load_data(validate_file)
 
     with log_to_mlflow(trial):
-        objective_func = globals()[objective_func]
+        if not isinstance(classifier_name, str):
+            classifier_name = trial.suggest_categorical("classifier", classifier_name)
+        else:
+            mlflow.log_param("classifier", classifier_name)
+        objective_func = classifiers[classifier_name]
         model = objective_func(trial, X, y)
         scorer = metrics.check_scoring(model, scoring=user_attrs["optimization_metric"])
         score = scorer(model, X_val, y_val)
@@ -75,7 +98,10 @@ def objective(trial, train_file, validate_file, objective_func):
         extra_metrics = trial.study.user_attrs.get("extra_metrics", [])
         for metric in extra_metrics:
             scorer = metrics.check_scoring(model, scoring=metric)
-            allscores[metric] = scorer(model, X_val, y_val)
+            try:
+                allscores[metric] = scorer(model, X_val, y_val)
+            except AttributeError:
+                allscores[metric] = np.nan
         mlflow.log_metrics(allscores)
         with tempfile.TemporaryDirectory() as tmpdir:
             tmplogfile = Path(tmpdir) / "model.txt"
@@ -85,3 +111,6 @@ def objective(trial, train_file, validate_file, objective_func):
             joblib.dump(model, tmpfile, compress=True)
             mlflow.log_artifacts(tmpdir)
     return score
+
+
+classifiers = {"mlp": mlp, "sgd": sgd}

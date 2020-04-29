@@ -240,7 +240,7 @@ def split_dataset(
 @mlflow_options
 @mysql_options
 @click.argument("experiment_name")
-@click.argument("objective_func")
+@click.argument("classifier_name", nargs=-1, required=True)
 @click.option("--n-trials", type=int, default=100, help="Number of trials")
 @click.option("--n-jobs", type=int, default=1, help="Number of parallel jobs")
 @click.option(
@@ -255,7 +255,7 @@ def split_dataset(
 )
 def cloud_mask(
     experiment_name,
-    objective_func,
+    classifier_name,
     n_trials,
     n_jobs,
     train_file,
@@ -284,7 +284,7 @@ def cloud_mask(
             training.cloud_mask.objective,
             train_file=train_file,
             validate_file=validate_file,
-            objective_func=objective_func,
+            classifier_name=classifier_name,
         ),
         n_trials=n_trials,
         n_jobs=n_jobs,
