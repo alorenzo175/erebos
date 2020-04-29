@@ -43,10 +43,9 @@ def objective(trial, train_file, validate_file, extra_metrics=None, save_model=F
     X, y = load_data(train_file)
     X_val, y_val = load_data(validate_file)
 
-    scaler_name = trial.suggest_categorical("scaler", ["StandardScaler"])
-    pipe_steps = [("scale", getattr(preprocessing, scaler_name)())]
-    whiten = trial.suggest_categorical("whiten", ["yes", "no"])
-    if whiten == "yes":
+    pipe_steps = [("scale", preprocessing.StandardScaler())]
+    whiten = trial.suggest_categorical("whiten", [True, False])
+    if whiten:
         pipe_steps.append(("pca", decomposition.PCA(whiten=True)))
 
     layer_size = trial.suggest_int("mlp_layer_size", 50, 250, 10)
