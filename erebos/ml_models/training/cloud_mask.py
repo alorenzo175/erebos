@@ -54,6 +54,7 @@ def objective(trial, train_file, validate_file, extra_metrics=None, save_model=F
         activation="relu",
         solver="adam",
         learning_rate="adaptive",
+        early_stopping=True,
         shuffle=True,
         max_iter=1000,
     )
