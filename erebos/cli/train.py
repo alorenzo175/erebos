@@ -240,6 +240,7 @@ def split_dataset(
 @mlflow_options
 @mysql_options
 @click.argument("experiment_name")
+@click.argument("objective_func")
 @click.option("--n-trials", type=int, default=100, help="Number of trials")
 @click.option("--n-jobs", type=int, default=1, help="Number of parallel jobs")
 @click.option(
@@ -253,7 +254,13 @@ def split_dataset(
     default=Path(__file__).parent / "../../data/cloud_mask/validate.nc",
 )
 def cloud_mask(
-    experiment_name, n_trials, n_jobs, train_file, validate_file, mysql_storage_url
+    experiment_name,
+    objective_func,
+    n_trials,
+    n_jobs,
+    train_file,
+    validate_file,
+    mysql_storage_url,
 ):
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
@@ -277,6 +284,7 @@ def cloud_mask(
             training.cloud_mask.objective,
             train_file=train_file,
             validate_file=validate_file,
+            objective_func=objective_func,
         ),
         n_trials=n_trials,
         n_jobs=n_jobs,

@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 import tempfile
 
@@ -36,13 +35,7 @@ def load_data(dataset):
     return X, y
 
 
-@log_to_mlflow
-def objective(trial, train_file, validate_file, extra_metrics=None, save_model=False):
-    user_attrs = trial.study.user_attrs
-    np.random.seed(user_attrs["seed"])
-    X, y = load_data(train_file)
-    X_val, y_val = load_data(validate_file)
-
+def mlp_objective(trial, X, y):
     pipe_steps = [("scale", preprocessing.StandardScaler())]
     whiten = trial.suggest_categorical("whiten", [True, False])
     if whiten:
@@ -63,16 +56,27 @@ def objective(trial, train_file, validate_file, extra_metrics=None, save_model=F
     model = pipeline.Pipeline(pipe_steps)
     logger.info("Fitting pipeline %s", str(model))
     model.fit(X, y)
-    scorer = metrics.check_scoring(model, scoring=user_attrs["optimization_metric"])
-    score = scorer(model, X_val, y_val)
-    logger.info("Score: %s", score)
-    if extra_metrics is not None:
+    return model
+
+
+def objective(trial, train_file, validate_file, objective_func):
+    user_attrs = trial.study.user_attrs
+    np.random.seed(user_attrs["seed"])
+    X, y = load_data(train_file)
+    X_val, y_val = load_data(validate_file)
+
+    with log_to_mlflow(trial):
+        objective_func = globals()[objective_func]
+        model = objective_func(trial, X, y)
+        scorer = metrics.check_scoring(model, scoring=user_attrs["optimization_metric"])
+        score = scorer(model, X_val, y_val)
+        logger.info("Score: %s", score)
         allscores = {user_attrs["optimization_metric"]: score}
+        extra_metrics = trial.study.user_attrs.get("extra_metrics", [])
         for metric in extra_metrics:
             scorer = metrics.check_scoring(model, scoring=metric)
             allscores[metric] = scorer(model, X_val, y_val)
         mlflow.log_metrics(allscores)
-    if save_model:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmplogfile = Path(tmpdir) / "model.txt"
             with open(tmplogfile, "w") as f:
@@ -80,5 +84,4 @@ def objective(trial, train_file, validate_file, extra_metrics=None, save_model=F
             tmpfile = Path(tmpdir) / "cloud_mask.joblib"
             joblib.dump(model, tmpfile, compress=True)
             mlflow.log_artifacts(tmpdir)
-
     return score
