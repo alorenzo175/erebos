@@ -16,6 +16,7 @@ from sklearn import (
     ensemble,
     svm,
     linear_model,
+    dummy,
 )
 import xarray as xr
 
@@ -36,6 +37,22 @@ def load_data(dataset):
     X = X.loc[X.notna().all(axis=1), vars_].astype("float32")
     y = y.loc[X.index, "cloud_layers"].astype("int8")
     return X, y
+
+
+def null(trial, X, y):
+    strategy = trial.suggest_categorical(
+        "dummy_strategy",
+        ["stratified", "most_frequent", "prior", "uniform", "constant"],
+    )
+    if strategy == "constant":
+        constant = trial.suggest_int("dummy_constant", 0, 1)
+    else:
+        constant = 0
+    clf = dummy.DummyClassifier(strategy, constant)
+    model = pipeline.Pipeline([("classifier", clf)])
+    logger.info("Fitting pipeline %s", str(model))
+    model.fit(X, y)
+    return model
 
 
 def mlp(trial, X, y):
