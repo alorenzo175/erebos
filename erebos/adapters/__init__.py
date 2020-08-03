@@ -82,9 +82,8 @@ class ErebosDataset:
     def find_nearest_xy(self, lons, lats):
         lons = np.asarray(lons)
         lats = np.asarray(lats)
-        h = self._xarray_obj.goes_imager_projection.perspective_point_height
-        xyz = self.crs.transform_points(self.crs.as_geodetic(), lons, lats) / h
-        d, inds = self.kdtree.query(xyz[:, :2])
+        xyz = self.crs.transform_points(self.crs.as_geodetic(), lons, lats)
+        d, inds = self.kdtree.query(xyz[:, :2].astype(self.x.dtype))
         iy, ix = np.unravel_index(
             inds, (self._xarray_obj.dims["y"], self._xarray_obj.dims["x"])
         )
