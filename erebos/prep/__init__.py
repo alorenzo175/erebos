@@ -71,7 +71,11 @@ def combine_calipso_goes_files(
         if fnc == "pointwise":
             ds = pointwise.make_combined_dataset(cfile, gfile, mean_vars, first_vars)
         else:
-            ds = cnn.make_combined_dataset(cfile, gfile, mean_vars + first_vars)
+            try:
+                ds = cnn.make_combined_dataset(cfile, gfile, mean_vars + first_vars)
+            except ValueError as e:
+                logger.error("Failed to combine %s, %s: %s", cfile, gfile, str(e))
+                continue
         logger.info("Saving file to %s", filename)
         ds.to_netcdf(filename, engine="h5netcdf")
         ds.close()
