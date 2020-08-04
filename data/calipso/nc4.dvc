@@ -1,4 +1,4 @@
-md5: 1bcf125e3c2f77af26c815b830ac7941
+md5: 84544ec3651352d37048b36cbd2dca22
 cmd: sh convert.sh
 deps:
 - md5: 735935a42227f433c8daa0bf8730edfd.dir
@@ -6,6 +6,3 @@ deps:
 outs:
 - md5: a820596a248635c4992dee996dbb79ba.dir
   path: nc4
-  cache: true
-  metric: false
-  persist: false
