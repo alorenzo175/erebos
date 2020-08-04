@@ -33,7 +33,7 @@ def make_combined_dataset(calipso_file, goes_file, calipso_vars, buffer_=25):
         | (ix - buffer_ <= 0)
         | (ix + buffer_ >= goes_ds.dims["x"])
     )
-    buffer_range = np.arange(-buffer_, buffer_ + 1, 1)
+    buffer_range = np.arange(int(-buffer_), int(buffer_) + 1, 1)
     xs = xr.DataArray(
         np.atleast_2d(ix[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gx"]
     )
@@ -76,6 +76,9 @@ def make_combined_dataset(calipso_file, goes_file, calipso_vars, buffer_=25):
             "erebos_version": __version__,
         },
     )
+    for k in out.coords.keys():
+        if k.startswith("erebos_"):
+            del out[k]
     calipso_ds.close()
     goes_ds.close()
     return out
