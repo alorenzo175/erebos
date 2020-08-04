@@ -17,33 +17,45 @@ from .base import _convert_attrs
 logger = logging.getLogger(__name__)
 
 
-def make_combined_dataset(calipso_file, goes_file, calipso_vars, buffer_=25):
-    """
-    buffer_ : int
-        Number of points on either side of central CALIPSO location
-    """
+def make_combined_dataset(
+    calipso_file, goes_file, calipso_vars, size, seed=8927, label_jitter=32
+):
     calipso_ds = xr.open_dataset(calipso_file, engine="h5netcdf")
     goes_ds = xr.open_dataset(goes_file, engine="h5netcdf")
     lats = calipso_ds.erebos.Latitude[:, 0]
     lons = calipso_ds.erebos.Longitude[:, 0]
     ix, iy = goes_ds.erebos.find_nearest_xy(lons, lats)
+    buffer_ = size // 2
+    rng = np.random.default_rng(seed)
+    rnd_pos = rng.integers(-label_jitter, label_jitter, [2, len(ix)])
+    xpos = ix + rnd_pos[0]
+    ypos = iy + rnd_pos[1]
     pts_overlap_edge = (
-        (iy - buffer_ <= 0)
-        | (iy + buffer_ >= goes_ds.dims["y"])
-        | (ix - buffer_ <= 0)
-        | (ix + buffer_ >= goes_ds.dims["x"])
+        (ypos - buffer_ <= 0)
+        | (ypos + buffer_ >= goes_ds.dims["y"])
+        | (xpos - buffer_ <= 0)
+        | (xpos + buffer_ >= goes_ds.dims["x"])
     )
     buffer_range = np.arange(int(-buffer_), int(buffer_) + 1, 1)
     xs = xr.DataArray(
-        np.atleast_2d(ix[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gx"]
+        np.atleast_2d(xpos[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gx"]
     )
     ys = xr.DataArray(
-        np.atleast_2d(iy[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gy"]
+        np.atleast_2d(ypos[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gy"]
     )
+    mask = xr.DataArray(
+        np.zeros((xs.shape[0], ys.shape[1], xs.shape[1]), dtype=bool),
+        dims=["rec", "gy", "gx"],
+    )
+    mx = xr.DataArray(buffer_ - rnd_pos[0][~pts_overlap_edge], dims="rec")
+    my = xr.DataArray(buffer_ - rnd_pos[1][~pts_overlap_edge], dims="rec")
+    mask[dict(gy=my, gx=mx)] = True
+    mask.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
+
     limited_goes = goes_ds.erebos.isel(x=xs, y=ys)
     limited_calipso = calipso_ds.erebos.sel(record=~pts_overlap_edge)
 
-    vars_ = {}
+    vars_ = {"label_mask": mask}
     for v in calipso_vars:
         var = limited_calipso.variables[v]
         # only the selected level of calipso file is kept
@@ -65,7 +77,16 @@ def make_combined_dataset(calipso_file, goes_file, calipso_vars, buffer_=25):
         vars_[name] = da
 
     vars_["goes_imager_projection"] = goes_ds.goes_imager_projection
-    coords = {"x": limited_goes.x, "y": limited_goes.y}
+    xda = limited_goes.x.copy()
+    xenc = xda.encoding
+    xenc["_FillValue"] = -9999
+    xda.encoding = xenc
+    yda = limited_goes.y.copy()
+    yenc = yda.encoding
+    yenc["_FillValue"] = -9999
+    yda.encoding = yenc
+
+    coords = {"x": xda, "y": yda}
     out = xr.Dataset(
         vars_,
         coords=coords,
