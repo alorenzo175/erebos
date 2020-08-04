@@ -50,7 +50,7 @@ def make_combined_dataset(
     mx = xr.DataArray(buffer_ - rnd_pos[0][~pts_overlap_edge], dims="rec")
     my = xr.DataArray(buffer_ - rnd_pos[1][~pts_overlap_edge], dims="rec")
     mask[dict(gy=my, gx=mx)] = True
-    mask.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
+    mask.encoding = {"zlib": True, "complevel": 4, "shuffle": True}
 
     limited_goes = goes_ds.erebos.isel(x=xs, y=ys)
     limited_calipso = calipso_ds.erebos.sel(record=~pts_overlap_edge)
@@ -62,7 +62,7 @@ def make_combined_dataset(
         # may want to average levels or something in future
         vals = var[:, 0].values.astype("float32")
         da = xr.DataArray(vals, dims=("rec"), attrs=_convert_attrs(var.attrs))
-        da.encoding = {"zlib": True, "complevel": 1, "shuffle": True}
+        da.encoding = {"zlib": True, "complevel": 4, "shuffle": True}
         vars_[v] = da
 
     for name, var in limited_goes.variables.items():
@@ -74,16 +74,19 @@ def make_combined_dataset(
         dqf = limited_goes.variables[f"DQF_{name}"].values.astype(bool)
         da = xr.DataArray(np.ma.array(cmi, mask=dqf), dims=var.dims, attrs=var.attrs)
         da.encoding = var.encoding
+        da.encoding["complevel"] = 4
         vars_[name] = da
 
     vars_["goes_imager_projection"] = goes_ds.goes_imager_projection
     xda = limited_goes.x.copy()
     xenc = xda.encoding
     xenc["_FillValue"] = -9999
+    xenc["zlib"] = True
     xda.encoding = xenc
     yda = limited_goes.y.copy()
     yenc = yda.encoding
     yenc["_FillValue"] = -9999
+    yenc["zlib"] = True
     yda.encoding = yenc
 
     coords = {"x": xda, "y": yda}
