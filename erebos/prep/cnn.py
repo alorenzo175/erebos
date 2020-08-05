@@ -45,7 +45,8 @@ def make_combined_dataset(
 ):
     calipso_ds = xr.open_dataset(calipso_file, engine="h5netcdf")
     goes_ds = xr.open_dataset(goes_file, engine="h5netcdf")
-    lats, lons = translate_calipso_locations_to_apparent_position(calipso_ds, goes_ds)
+    lats = calipso_ds.erebos.Latitude[:, 0]
+    lons = calipso_ds.erebos.Longitude[:, 0]
     ix, iy = goes_ds.erebos.find_nearest_xy(lons, lats)
     buffer_ = size // 2
     rng = np.random.default_rng(seed)

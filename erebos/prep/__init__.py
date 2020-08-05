@@ -73,7 +73,7 @@ def combine_calipso_goes_files(
         else:
             try:
                 ds = cnn.make_combined_dataset(
-                    cfile, gfile, mean_vars + first_vars, size=68, label_jitter=12
+                    cfile, gfile, mean_vars + first_vars, size=68
                 )
             except ValueError as e:
                 logger.error("Failed to combine %s, %s: %s", cfile, gfile, str(e))
