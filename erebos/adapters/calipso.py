@@ -106,7 +106,7 @@ def add_spacecraft_location(ds):
     y = ds.Spacecraft_Position[:, 2].values
     z = ds.Spacecraft_Position[:, 0].values
     loc = xr.DataArray([x, y, z], dims=ds.Spacecraft_Position.dims[::-1])
-    return ds.assign_coords(spacecraft_location=loc)
+    return ds.assign_coords(erebos_spacecraft_location=loc)
 
 
 def process_calipso_dataset(ds):

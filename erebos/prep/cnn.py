@@ -10,11 +10,34 @@ import numpy as np
 import xarray as xr
 
 
-from erebos import __version__
+from erebos import __version__, utils
 from .base import _convert_attrs
 
 
 logger = logging.getLogger(__name__)
+
+
+def translate_calipso_locations_to_apparent_position(
+    calipso_ds, goes_ds, fill_na=True, level=0
+):
+    # nan means no cloud
+    cloud_heights = calipso_ds.erebos.cloud_top_altitude[:, level].values
+    if fill_na:
+        cloud_heights = np.ma.fix_invalid(cloud_heights).filled(0)
+    terrain_height = calipso_ds.erebos.surface_elevation[:, 0].values
+    cloud_locations = utils.RotatedECRPosition.from_geodetic(
+        calipso_ds.erebos.Latitude[:, 0].values,
+        calipso_ds.erebos.Longitude[:, 0].values,
+        0.0,
+    )
+    actual_cloud_pos = utils.find_actual_cloud_position(
+        calipso_ds.erebos.spacecraft_location, cloud_locations, cloud_heights
+    )
+    apparent_cloud_pos = utils.find_apparent_cloud_position(
+        goes_ds.erebos.spacecraft_location, actual_cloud_pos, terrain_height
+    )
+    alat, alon = apparent_cloud_pos.to_geodetic()
+    return alat, alon
 
 
 def make_combined_dataset(
@@ -22,8 +45,7 @@ def make_combined_dataset(
 ):
     calipso_ds = xr.open_dataset(calipso_file, engine="h5netcdf")
     goes_ds = xr.open_dataset(goes_file, engine="h5netcdf")
-    lats = calipso_ds.erebos.Latitude[:, 0]
-    lons = calipso_ds.erebos.Longitude[:, 0]
+    lats, lons = translate_calipso_locations_to_apparent_position(calipso_ds, goes_ds)
     ix, iy = goes_ds.erebos.find_nearest_xy(lons, lats)
     buffer_ = size // 2
     rng = np.random.default_rng(seed)
