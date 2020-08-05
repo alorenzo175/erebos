@@ -1,0 +1,9 @@
+dataprep:
+  cmd: erebos data generate-calipso-training-data nc4 ../multichannel combined_training
+    -v --file-type cnn --calipso-glob='CAL*D_Subset.nc'
+  deps:
+  - path: nc4
+    md5: a820596a248635c4992dee996dbb79ba.dir
+  outs:
+  - path: combined_training
+    md5: 0e411af64d73515f024ef2233cb6e09d.dir

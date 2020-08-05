@@ -1,6 +1,6 @@
 [core]
     analytics = false
-    remote = anon
+    remote = s3
 [cache]
     type = symlink
 ['remote "s3"']

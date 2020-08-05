@@ -1,7 +1,7 @@
-md5: 33cd166d511c13e3bf3ed1d5ef2e17c2
+md5: d409c3965c4d098f09bad5e67c5a288f
 cmd: erebos train split-dataset --daytime-only -v calipso/combined_training cloud_mask
 deps:
-- md5: c9b172a083d0b543522a7e1dd310393c.dir
+- md5: 0e411af64d73515f024ef2233cb6e09d.dir
   path: calipso/combined_training
 outs:
 - md5: 71c4cbd483022571ebc325c8778dc97a.dir

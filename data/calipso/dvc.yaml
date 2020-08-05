@@ -1,0 +1,9 @@
+stages:
+  dataprep:
+    cmd: erebos data generate-calipso-training-data nc4 ../multichannel combined_training
+      -v --file-type cnn --calipso-glob='CAL*D_Subset.nc'
+    deps:
+    - nc4
+    outs:
+    - combined_training:
+        persist: true
