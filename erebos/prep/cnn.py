@@ -48,6 +48,9 @@ def make_combined_dataset(
     lats = calipso_ds.erebos.Latitude[:, 0]
     lons = calipso_ds.erebos.Longitude[:, 0]
     ix, iy = goes_ds.erebos.find_nearest_xy(lons, lats)
+    alat, alon = translate_calipso_locations_to_apparent_position(calipso_ds, goes_ds)
+    nx, ny = goes_ds.erebos.find_nearest_xy(alon, alat)
+    dx, dy = nx - ix, ny - iy
     buffer_ = size // 2
     rng = np.random.default_rng(seed)
     rnd_pos = rng.integers(-label_jitter, label_jitter, [2, len(ix)])
@@ -67,12 +70,13 @@ def make_combined_dataset(
         np.atleast_2d(ypos[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gy"]
     )
     mask = xr.DataArray(
-        np.zeros((xs.shape[0], ys.shape[1], xs.shape[1]), dtype=bool),
-        dims=["rec", "gy", "gx"],
+        np.zeros((xs.shape[0], ys.shape[1], xs.shape[1], 2), dtype=bool),
+        dims=["rec", "gy", "gx", "adjusted"],
     )
     mx = xr.DataArray(buffer_ - rnd_pos[0][~pts_overlap_edge], dims="rec")
     my = xr.DataArray(buffer_ - rnd_pos[1][~pts_overlap_edge], dims="rec")
-    mask[dict(gy=my, gx=mx)] = True
+    mask[dict(gy=my, gx=mx, adjusted=0)] = True
+    mask[dict(gy=my + dy, gx=mx + dx, adjusted=1)] = True
     mask.encoding = {"zlib": True, "complevel": 4, "shuffle": True}
 
     limited_goes = goes_ds.erebos.isel(x=xs, y=ys)
