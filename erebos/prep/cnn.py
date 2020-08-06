@@ -62,7 +62,7 @@ def make_combined_dataset(
         | (xpos - buffer_ <= 0)
         | (xpos + buffer_ >= goes_ds.dims["x"])
     )
-    buffer_range = np.arange(int(-buffer_), int(buffer_) + 1, 1)
+    buffer_range = np.arange(int(-buffer_), int(buffer_), 1)
     xs = xr.DataArray(
         np.atleast_2d(xpos[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gx"]
     )
