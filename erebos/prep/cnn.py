@@ -50,7 +50,6 @@ def make_combined_dataset(
     ix, iy = goes_ds.erebos.find_nearest_xy(lons, lats)
     alat, alon = translate_calipso_locations_to_apparent_position(calipso_ds, goes_ds)
     nx, ny = goes_ds.erebos.find_nearest_xy(alon, alat)
-    dx, dy = nx - ix, ny - iy
     buffer_ = size // 2
     rng = np.random.default_rng(seed)
     rnd_pos = rng.integers(-label_jitter, label_jitter, [2, len(ix)])
@@ -62,6 +61,8 @@ def make_combined_dataset(
         | (xpos - buffer_ <= 0)
         | (xpos + buffer_ >= goes_ds.dims["x"])
     )
+    dx = (nx - ix)[~pts_overlap_edge]
+    dy = (ny - iy)[~pts_overlap_edge]
     buffer_range = np.arange(int(-buffer_), int(buffer_), 1)
     xs = xr.DataArray(
         np.atleast_2d(xpos[~pts_overlap_edge]).T + buffer_range, dims=["rec", "gx"]
