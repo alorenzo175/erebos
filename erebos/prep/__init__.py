@@ -125,8 +125,16 @@ def split_data(combined_df, train_pct, test_pct, seed):
 
 def concat_datasets(datasets, outpath):
     logger.info("Saving data to %s", outpath)
-    ds = xr.open_mfdataset(
-        datasets, engine="h5netcdf", combine="nested", concat_dim="rec"
-    ).chunk(dict(rec=500))
-    ds.attrs = {"erebos_version": __version__, "combined_calipso_files": list(datasets)}
-    ds.to_zarr(outpath, consolidated=True)
+    first = True
+    for dataset in datasets:
+        logger.debug("Saving data from %s", dataset)
+        ds = xr.open_dataset(dataset, engine="h5netcdf").chunk(dict(rec=500))
+        ds.attrs = {
+            "erebos_version": __version__,
+            "combined_calipso_files": list(datasets),
+        }
+        if first:
+            ds.to_zarr(outpath, mode="w", consolidated=True)
+            first = False
+        else:
+            ds.to_zarr(outpath, mode="a", consolidated=True, append_dim="rec")
