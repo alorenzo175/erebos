@@ -229,9 +229,9 @@ def split_dataset(
     train, test, val = prep.split_data(
         prep.filter_times(df, daytime_only), train_pct, test_pct, seed
     )
-    prep.concat_datasets(train.filename, save_directory / "train.nc")
-    prep.concat_datasets(test.filename, save_directory / "test.nc")
-    prep.concat_datasets(val.filename, save_directory / "validate.nc")
+    prep.concat_datasets(train.filename, save_directory / "train")
+    prep.concat_datasets(test.filename, save_directory / "test")
+    prep.concat_datasets(val.filename, save_directory / "validate")
 
 
 @train.command()

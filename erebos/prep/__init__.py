@@ -127,6 +127,6 @@ def concat_datasets(datasets, outpath):
     logger.info("Saving data to %s", outpath)
     ds = xr.open_mfdataset(
         datasets, engine="h5netcdf", combine="nested", concat_dim="rec"
-    )
+    ).chunk(dict(rec=500))
     ds.attrs = {"erebos_version": __version__, "combined_calipso_files": list(datasets)}
-    ds.to_netcdf(outpath, engine="h5netcdf")
+    ds.to_zarr(outpath, consolidated=True)
