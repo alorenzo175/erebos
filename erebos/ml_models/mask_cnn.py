@@ -20,6 +20,24 @@ def load_batch(dataset, device, records=500, dtype=torch.float32, adjusted=0):
             dtype=dtype,
             device=device,
         )
+        zen = (
+            torch.ones(
+                (dsl.dims["rec"], 1, dsl.dims["gy"], dsl.dims["gx"]),
+                dtype=dtype,
+                device=device,
+            )
+            * dsl["solar_zenith"].values[:, np.newaxis, np.newaxis, np.newaxis]
+        )
+        az = (
+            torch.ones(
+                (dsl.dims["rec"], 1, dsl.dims["gy"], dsl.dims["gx"]),
+                dtype=dtype,
+                device=device,
+            )
+            * dsl["solar_azimuth"].values[:, np.newaxis, np.newaxis, np.newaxis]
+        )
+        X = torch.cat((X, zen, az), dim=1)
+
         mask = torch.tensor(
             dsl.label_mask.sel(adjusted=adjusted).values[:, np.newaxis],
             dtype=torch.bool,
