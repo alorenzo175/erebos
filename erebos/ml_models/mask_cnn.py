@@ -39,15 +39,15 @@ def load_batch(dataset, device, records=500, dtype=torch.float32, adjusted=0):
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes):
+    def __init__(self, n_channels, n_classes, padding):
         super().__init__()
 
         down0_out_chan = 32
         self.down0 = nn.Sequential(
-            nn.Conv2d(n_channels, down0_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(n_channels, down0_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -56,10 +56,10 @@ class UNet(nn.Module):
 
         down1_out_chan = 64
         self.down1 = nn.Sequential(
-            nn.Conv2d(down0_out_chan, down1_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down0_out_chan, down1_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down1_out_chan, down1_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down1_out_chan, down1_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -68,10 +68,10 @@ class UNet(nn.Module):
 
         down2_out_chan = 128
         self.down2 = nn.Sequential(
-            nn.Conv2d(down1_out_chan, down2_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down1_out_chan, down2_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down2_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down2_out_chan, down2_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down2_out_chan, down2_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down2_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -81,10 +81,10 @@ class UNet(nn.Module):
         )
 
         self.upconv1 = nn.Sequential(
-            nn.Conv2d(down2_out_chan, down1_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down2_out_chan, down1_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down1_out_chan, down1_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down1_out_chan, down1_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -94,10 +94,10 @@ class UNet(nn.Module):
         )
 
         self.upconv0 = nn.Sequential(
-            nn.Conv2d(down1_out_chan, down0_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down1_out_chan, down0_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=1),
+            nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
         )
