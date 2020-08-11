@@ -87,7 +87,7 @@ def load_combined_files(combined_dir):
     opts = []
     for file_ in combined_dir.glob("*.nc"):
         with xr.open_dataset(file_, engine="h5netcdf") as ds:
-            ftime = pd.Timestamp(ds.goes_time, tz="UTC")
+            ftime = pd.Timestamp(ds.goes_time.isel(rec=0).item(), tz="UTC")
             recs = ds.dims["rec"]
         opts.append((str(file_), ftime, recs))
     df = pd.DataFrame(opts, columns=["filename", "file_time", "num_records"])
