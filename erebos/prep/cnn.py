@@ -11,6 +11,7 @@ import xarray as xr
 
 
 from erebos import __version__, utils
+from erebos.adapters import goes
 from .base import _convert_attrs
 
 
@@ -41,10 +42,14 @@ def translate_calipso_locations_to_apparent_position(
 
 
 def make_combined_dataset(
-    calipso_file, goes_file, calipso_vars, size, seed=8927, label_jitter=32
+    calipso_file, goes_file, calipso_vars, size, seed=8927, label_jitter=28, complevel=4
 ):
     calipso_ds = xr.open_dataset(calipso_file, engine="h5netcdf")
-    goes_ds = xr.open_dataset(goes_file, engine="h5netcdf")
+    goes_ds = (
+        xr.open_dataset(goes_file, engine="h5netcdf")
+        .pipe(goes.assign_latlon)
+        .pipe(goes.assign_solarposition_variables)
+    )
     lats = calipso_ds.erebos.Latitude[:, 0]
     lons = calipso_ds.erebos.Longitude[:, 0]
     ix, iy = goes_ds.erebos.find_nearest_xy(lons, lats)
@@ -78,19 +83,34 @@ def make_combined_dataset(
     my = xr.DataArray(buffer_ - rnd_pos[1][~pts_overlap_edge], dims="rec")
     mask[dict(gy=my, gx=mx, adjusted=0)] = True
     mask[dict(gy=my + dy, gx=mx + dx, adjusted=1)] = True
-    mask.encoding = {"zlib": True, "complevel": 4, "shuffle": True}
+    mask.encoding = {"zlib": True, "complevel": complevel, "shuffle": True}
 
     limited_goes = goes_ds.erebos.isel(x=xs, y=ys)
-    limited_calipso = calipso_ds.erebos.sel(record=~pts_overlap_edge)
+    badrecs = limited_goes.CMI_C01.isnull().any(dim=("gy", "gx"))
+    logger.debug(
+        "Ignoring %s records as outside domain and %s as on limb",
+        pts_overlap_edge.sum(),
+        badrecs.sum().item(),
+    )
+    limited_goes = limited_goes.sel(rec=~badrecs)
+    limited_calipso = calipso_ds.erebos.sel(record=~pts_overlap_edge).sel(
+        record=~badrecs.values
+    )
 
     vars_ = {"label_mask": mask}
+    if "time" not in calipso_vars:
+        calipso_vars = list(calipso_vars) + ["time"]
     for v in calipso_vars:
         var = limited_calipso.variables[v]
         # only the selected level of calipso file is kept
         # may want to average levels or something in future
         vals = var[:, 0].values.astype("float32")
         da = xr.DataArray(vals, dims=("rec"), attrs=_convert_attrs(var.attrs))
-        da.encoding = {"zlib": True, "complevel": 4, "shuffle": True}
+        da.encoding = {"zlib": True, "complevel": complevel, "shuffle": True}
+        if v == "time":
+            v = "calipso_time"
+        if v in ("solar_zenith", "solar_azimuth"):
+            v = f"calipso_{v}"
         vars_[v] = da
 
     for name, var in limited_goes.variables.items():
@@ -99,10 +119,13 @@ def make_combined_dataset(
         cmi = var.values
         # anything != 0 is considered questionable quality
         # not quite true for COD, but ok for now
-        dqf = limited_goes.variables[f"DQF_{name}"].values.astype(bool)
+        try:
+            dqf = limited_goes.variables[f"DQF_{name}"].values.astype(bool)
+        except KeyError:
+            dqf = False
         da = xr.DataArray(np.ma.array(cmi, mask=dqf), dims=var.dims, attrs=var.attrs)
         da.encoding = var.encoding
-        da.encoding["complevel"] = 4
+        da.encoding["complevel"] = complevel
         vars_[name] = da
 
     vars_["goes_imager_projection"] = goes_ds.goes_imager_projection
@@ -110,26 +133,42 @@ def make_combined_dataset(
     xenc = xda.encoding
     xenc["_FillValue"] = -9999
     xenc["zlib"] = True
+    xenc["complevel"] = complevel
     xda.encoding = xenc
     yda = limited_goes.y.copy()
     yenc = yda.encoding
     yenc["_FillValue"] = -9999
     yenc["zlib"] = True
+    yenc["complevel"] = complevel
     yda.encoding = yenc
+    tenc = limited_goes.t.encoding
+    tenc["zlib"] = True
+    tenc["complevel"] = complevel
+    tvals = np.repeat(limited_goes.t.values.reshape(1), limited_goes.dims["rec"])
+    t = xr.DataArray(tvals, attrs=limited_goes.t.attrs, dims=("rec"))
+    t.encoding = tenc
+    tbvals = np.tile(
+        limited_goes.time_bounds.values[:, np.newaxis], limited_goes.dims["rec"]
+    ).T
+    tb = xr.DataArray(
+        tbvals,
+        attrs=limited_goes.time_bounds.attrs,
+        dims=("rec", "number_of_time_bounds"),
+    )
+    tb.encoding = tenc
 
-    coords = {"x": xda, "y": yda}
+    coords = {"x": xda, "y": yda, "goes_time": t, "goes_time_bounds": tb}
     out = xr.Dataset(
         vars_,
         coords=coords,
         attrs={
-            "goes_time": str(goes_ds.erebos.t.values),
             "goes_file": str(goes_file.name),
             "calipso_file": str(calipso_file.name),
             "erebos_version": __version__,
         },
     )
     for k in out.coords.keys():
-        if k.startswith("erebos_"):
+        if k.startswith("erebos_") or k in ("x_image", "y_image", "t"):
             del out[k]
     calipso_ds.close()
     goes_ds.close()

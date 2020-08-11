@@ -12,10 +12,8 @@ import xarray as xr
 from erebos.utils import RotatedECRPosition
 
 
-def project_xy_to_latlon(x, y, goes_file):
-    ds = goes_file.erebos
-    crs = ds.crs
-    X, Y = np.meshgrid(ds.erebos.x, ds.erebos.y)
+def project_xy_to_latlon(x, y, crs):
+    X, Y = np.meshgrid(x, y)
     lonlat = ccrs.Geodetic(globe=crs.globe).transform_points(crs, X, Y)
     lon = lonlat[:, :, 0].astype("float32")
     lat = lonlat[:, :, 1].astype("float32")
@@ -29,7 +27,9 @@ def assign_latlon(goes_file):
             goes_file = goes_file.expand_dims(dim)
             sel[dim] = 0
 
-    lon, lat = project_xy_to_latlon(goes_file.x, goes_file.y, goes_file)
+    lon, lat = project_xy_to_latlon(
+        goes_file.erebos.x, goes_file.erebos.y, goes_file.erebos.crs
+    )
     lon_arr = xr.DataArray(lon.astype("float32"), dims=("y", "x"))
     lat_arr = xr.DataArray(lat.astype("float32"), dims=("y", "x"))
     lon_arr.encoding = {"zlib": True, "dtype": "float32", "scale_factor": 0.0001}
