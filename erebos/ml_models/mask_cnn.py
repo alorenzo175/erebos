@@ -1,8 +1,20 @@
+import logging
+import os
+import time
+
+
 import numpy as np
 import torch
+import torch.distributed as dist
 from torch import nn
 import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.optim as optim
+import torch.multiprocessing as mp
 import xarray as xr
+
+
+logger = logging.getLogger(__name__)
 
 
 def load_batch(dataset, device, records=500, dtype=torch.float32, adjusted=0):
@@ -120,3 +132,47 @@ class UNet(nn.Module):
         x = self._up_and_conv(x, x0, self.up0, self.upconv0)
         out = self.out(x)
         return out
+
+
+def setup(rank, world_size):
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "38288"
+
+    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
+
+def cleanup():
+    dist.destroy_process_group()
+
+
+def dist_train(rank, world_size, train_path):
+    setup(rank, world_size)
+    logger.info("Training on rank %s", rank)
+
+    device = torch.device(f"cuda:{rank}")
+    model = UNet(18, 1, 0).to(device)
+    ddp_model = DDP(model)
+
+    criterion = torch.nn.BCELoss()
+    optimizer = optim.SGD(ddp_model.parameters(), lr=0.001, momentum=0.9)
+
+    for epoch in range(100):
+        losses = []
+        a = time.time()
+        for i, (X, mask, y) in enumerate(load_batch(train_path, device, 250)):
+            optimizer.zero_grad()
+            outputs = ddp_model(X)
+            c = (mask.shape[3] - outputs.shape[3]) // 2
+            m = F.pad(mask, (-c, -c, -c, -c))
+            loss = criterion(outputs[m], y)
+            losses.append(loss.item())
+            loss.backward()
+            optimizer.step()
+        dur = time.time() - a
+        logger.info(
+            "Epoch %s completed with average loss %s and time %s",
+            epoch,
+            np.array(losses).mean(),
+            dur,
+        )
+    cleanup()
