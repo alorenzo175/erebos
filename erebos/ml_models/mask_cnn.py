@@ -6,7 +6,7 @@ import xarray as xr
 
 
 def load_batch(dataset, device, records=500, dtype=torch.float32, adjusted=0):
-    vars_ = [f"CMI_C{i:02d}" for i in range(1, 17)]
+    vars_ = [f"CMI_C{i:02d}" for i in range(1, 17)] + ["solar_zenith", "solar_azimuth"]
     ds = xr.open_zarr(dataset)
     s = 0
     while s < ds.dims["rec"]:
@@ -20,26 +20,6 @@ def load_batch(dataset, device, records=500, dtype=torch.float32, adjusted=0):
             dtype=dtype,
             device=device,
         )
-        zen = torch.ones(
-            (dsl.dims["rec"], 1, dsl.dims["gy"], dsl.dims["gx"]),
-            dtype=dtype,
-            device=device,
-        ) * torch.tensor(
-            dsl["solar_zenith"].values[:, np.newaxis, np.newaxis, np.newaxis],
-            dtype=dtype,
-            device=device,
-        )
-        az = torch.ones(
-            (dsl.dims["rec"], 1, dsl.dims["gy"], dsl.dims["gx"]),
-            dtype=dtype,
-            device=device,
-        ) * torch.tensor(
-            dsl["solar_azimuth"].values[:, np.newaxis, np.newaxis, np.newaxis],
-            dtype=dtype,
-            device=device,
-        )
-        X = torch.cat((X, zen, az), dim=1)
-
         mask = torch.tensor(
             dsl.label_mask.sel(adjusted=adjusted).values[:, np.newaxis],
             dtype=torch.bool,
