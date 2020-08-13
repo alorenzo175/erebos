@@ -214,8 +214,9 @@ def train():
 @click.option("--test-pct", type=int, default=10)
 @click.option("--daytime-only", is_flag=True, default=False)
 @click.option("--seed", type=int, default=0)
+@click.option("--workers", type=int, default=4)
 def split_dataset(
-    combined_dir, save_directory, train_pct, test_pct, seed, daytime_only
+    combined_dir, save_directory, train_pct, test_pct, seed, daytime_only, workers
 ):
     """
     Split dataset into train, test, and validation sets combining each into
@@ -225,13 +226,14 @@ def split_dataset(
     """
     from erebos import prep
 
-    df = prep.load_combined_files(combined_dir)
+    df = prep.load_combined_files(combined_dir, workers)
     train, test, val = prep.split_data(
         prep.filter_times(df, daytime_only), train_pct, test_pct, seed
     )
-    prep.concat_datasets(train.filename, save_directory / "train")
-    prep.concat_datasets(test.filename, save_directory / "test")
-    prep.concat_datasets(val.filename, save_directory / "validate")
+    orient = "records"
+    train.to_json(save_directory / "train.json", orient=orient)
+    test.to_json(save_directory / "test.json", orient=orient)
+    val.to_json(save_directory / "validate.json", orient=orient)
 
 
 @train.command()

@@ -1,3 +1,4 @@
+from concurrent.futures import ProcessPoolExecutor
 import logging
 
 
@@ -83,15 +84,40 @@ def combine_calipso_goes_files(
         ds.close()
 
 
-def load_combined_files(combined_dir):
-    opts = []
-    for file_ in combined_dir.glob("*.nc"):
-        with xr.open_dataset(file_, engine="h5netcdf") as ds:
-            ftime = pd.Timestamp(ds.goes_time.isel(rec=0).item(), tz="UTC")
-            recs = ds.dims["rec"]
-        opts.append((str(file_), ftime, recs))
-    df = pd.DataFrame(opts, columns=["filename", "file_time", "num_records"])
-    return df
+def dataset_properties(filename):
+    with xr.open_dataset(filename, engine="h5netcdf") as ds:
+        nanvars = [f"CMI_C{i:02d}" for i in range(1, 17)] + [
+            "solar_zenith",
+            "solar_azimuth",
+            "x",
+            "y",
+            "goes_time",
+        ]
+        nanrec = (
+            ds[nanvars].isnull().any(dim=("gy", "gx")).to_array().any(dim="variable")
+        )
+
+        nans = nanrec.values.nonzero()[0]
+        totalrecs = ds.dims["rec"]
+        availrecs = totalrecs - len(nans)
+        ftime = pd.Timestamp(ds.goes_time.isel(rec=0).item(), tz="UTC")
+    return str(filename), totalrecs, availrecs, nans, ftime
+
+
+def load_combined_files(combined_dir, workers=8):
+    with ProcessPoolExecutor(max_workers=workers) as exc:
+        futs = exc.map(dataset_properties, combined_dir.glob("*.nc"))
+    df = pd.DataFrame(
+        futs,
+        columns=[
+            "filename",
+            "total_records",
+            "not_nan_records",
+            "nan_locs",
+            "file_time",
+        ],
+    )
+    return df.set_index("filename").sort_index().reset_index()
 
 
 def filter_times(combined_df, daytime_only):
@@ -113,12 +139,12 @@ def split_data(combined_df, train_pct, test_pct, seed):
         combined_df.sample(frac=1, random_state=seed),
         [int(train_pct / 100 * len_), int((train_pct + test_pct) / 100 * len_)],
     )
-    tot = combined_df.num_records.sum()
+    tot = combined_df.not_nan_records.sum()
     logger.info(
         "Split with %0.1f%% in training, %0.1f%% in test, %0.1f%% in validation",
-        train.num_records.sum() / tot * 100,
-        test.num_records.sum() / tot * 100,
-        val.num_records.sum() / tot * 100,
+        train.not_nan_records.sum() / tot * 100,
+        test.not_nan_records.sum() / tot * 100,
+        val.not_nan_records.sum() / tot * 100,
     )
     return train, test, val
 
