@@ -1,7 +1,9 @@
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import logging
+import math
 from pathlib import Path
+import time
 
 
 import numpy as np
@@ -152,7 +154,7 @@ def split_data(combined_df, train_pct, test_pct, seed):
     return train, test, val
 
 
-def concat_datasets(datasets, outpath):
+def _concat_datasets(datasets, outpath):
     logger.info("Saving data to %s", outpath)
     first = True
     xr.set_options(file_cache_maxsize=10)
@@ -190,3 +192,54 @@ def concat_datasets(datasets, outpath):
         "combined_calipso_files": list(datasets),
     }
     nds.to_zarr(outpath, mode="w")
+
+
+def concat_datasets(dataset_json, outpath, save_size, chunk_size):
+    logger.info("Saving data to %s", outpath)
+    info_df = pd.read_json(dataset_json, orient="records")
+    base_dir = Path(dataset_json).parent.parent
+    info_df["filename"] = info_df.filename.apply(lambda x: (base_dir / x).absolute())
+    nonexistent = info_df.filename.apply(lambda x: not x.exists())
+    if nonexistent.any():
+        raise ValueError(
+            "Missing {} files, like {}".format(
+                nonexistent.sum(), str(info_df.filename[nonexistent.argmax()])
+            )
+        )
+
+    out = []
+    last = 0
+    lasttot = 0
+    for _, ser in info_df.reset_index(drop=True).iterrows():
+        ind = np.arange(ser.not_nan_records) + last
+        recind = np.delete(np.arange(ser.total_records), ser.nan_locs) + lasttot
+        last += ser.not_nan_records
+        lasttot += ser.total_records
+        ndf = pd.DataFrame({"filename": ser.filename, "index": ind, "record": recind})
+        out.append(ndf)
+    index = pd.concat(out).set_index("index")
+
+    for key in range(math.ceil(len(index) / save_size)):
+        logger.debug("Saving data from batch %s", key)
+        sl = slice(key * save_size, (key + 1) * save_size)
+        idf = index.iloc[sl]
+        recs = idf.record.copy()
+        recs -= (
+            index.set_index("filename").loc[idf.filename.unique()[0], "record"].iloc[0]
+        )
+        with xr.open_mfdataset(
+            idf.filename.unique(), engine="h5netcdf", concat_dim="rec", combine="nested"
+        ) as ds:
+            fnames = xr.DataArray(idf.filename.apply(lambda x: str(x)), dims=("rec"),)
+            dsl = (
+                ds.isel(rec=recs)
+                .assign_coords({"combined_filename": fnames})
+                .chunk(dict(rec=chunk_size, gy=ds.dims["gy"], gx=ds.dims["gx"]))
+            )
+
+            dsl.attrs = {
+                "erebos_version": __version__,
+            }
+            dsl.to_zarr(
+                Path(outpath).with_suffix(f".zarr.{key}"), mode="w", consolidated=True
+            )
