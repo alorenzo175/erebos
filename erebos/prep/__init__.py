@@ -131,11 +131,15 @@ def concat_datasets(datasets, outpath):
     for dataset in datasets:
         logger.debug("Processing %s", dataset)
         ds = xr.open_dataset(dataset, engine="h5netcdf")
+        nanvars = [f"CMI_C{i:02d}" for i in range(1, 17)] + [
+            "solar_zenith",
+            "solar_azimuth",
+            "x",
+            "y",
+            "goes_time",
+        ]
         nanrec = (
-            ds.isnull()
-            .any(dim=("gy", "gx", "adjusted", "number_of_time_bounds"))
-            .to_array()
-            .any(dim="variable")
+            ds[nanvars].isnull().any(dim=("gy", "gx")).to_array().any(dim="variable")
         )
         ds = ds.sel(rec=~nanrec).chunk(dict(rec=500))
         if first:
