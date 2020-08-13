@@ -127,7 +127,7 @@ def concat_datasets(datasets, outpath):
     logger.info("Saving data to %s", outpath)
     first = True
     xr.set_options(file_cache_maxsize=10)
-    tmppath = outpath + ".nc"
+    tmppath = outpath.with_suffix(".nc")
     for dataset in datasets:
         logger.debug("Processing %s", dataset)
         ds = xr.open_dataset(dataset, engine="h5netcdf")
