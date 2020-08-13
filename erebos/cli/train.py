@@ -226,7 +226,7 @@ def split_dataset(
     """
     from erebos import prep
 
-    df = prep.load_combined_files(combined_dir, workers)
+    df = prep.load_combined_files(combined_dir, save_directory.parent, workers)
     train, test, val = prep.split_data(
         prep.filter_times(df, daytime_only), train_pct, test_pct, seed
     )

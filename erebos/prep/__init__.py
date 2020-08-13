@@ -1,5 +1,7 @@
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 import logging
+from pathlib import Path
 
 
 import numpy as np
@@ -104,7 +106,7 @@ def dataset_properties(filename):
     return str(filename), totalrecs, availrecs, nans, ftime
 
 
-def load_combined_files(combined_dir, workers=8):
+def load_combined_files(combined_dir, base_dir, workers=8):
     with ProcessPoolExecutor(max_workers=workers) as exc:
         futs = exc.map(dataset_properties, combined_dir.glob("*.nc"))
     df = pd.DataFrame(
@@ -117,6 +119,7 @@ def load_combined_files(combined_dir, workers=8):
             "file_time",
         ],
     )
+    df["filename"] = df.filename.apply(lambda x: str(Path(x).relative_to(base_dir)))
     return df.set_index("filename").sort_index().reset_index()
 
 
