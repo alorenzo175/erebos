@@ -126,15 +126,34 @@ def split_data(combined_df, train_pct, test_pct, seed):
 def concat_datasets(datasets, outpath):
     logger.info("Saving data to %s", outpath)
     first = True
+    xr.set_options(file_cache_maxsize=10)
+    tmppath = outpath + ".nc"
     for dataset in datasets:
-        logger.debug("Saving data from %s", dataset)
-        ds = xr.open_dataset(dataset, engine="h5netcdf").chunk(dict(rec=500))
-        ds.attrs = {
-            "erebos_version": __version__,
-            "combined_calipso_files": list(datasets),
-        }
+        logger.debug("Processing %s", dataset)
+        ds = xr.open_dataset(dataset, engine="h5netcdf")
+        nanrec = (
+            ds.isnull()
+            .any(dim=("gy", "gx", "adjusted", "number_of_time_bounds"))
+            .to_array()
+            .any(dim="variable")
+        )
+        ds = ds.sel(rec=~nanrec).chunk(dict(rec=500))
         if first:
-            ds.to_zarr(outpath, mode="w", consolidated=True)
-            first = False
+            nds = ds
         else:
-            ds.to_zarr(outpath, mode="a", consolidated=True, append_dim="rec")
+            logger.debug("Concatenating...")
+            nds = xr.open_dataset(tmppath, engine="h5netcdf")
+            nds = xr.concat(
+                [nds, ds],
+                dim="rec",
+                join="left",
+                combine_attrs="drop",
+                compat="override",
+                coords="minimal",
+            )
+        nds.to_netcdf(tmppath, engine="h5netcdf", mode="w")
+    nds.attrs = {
+        "erebos_version": __version__,
+        "combined_calipso_files": list(datasets),
+    }
+    nds.to_zarr(outpath, mode="w")
