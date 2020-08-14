@@ -217,7 +217,14 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
         recind = np.delete(np.arange(ser.total_records), ser.nan_locs) + lasttot
         last += ser.not_nan_records
         lasttot += ser.total_records
-        ndf = pd.DataFrame({"filename": ser.filename, "index": ind, "record": recind})
+        ndf = pd.DataFrame(
+            {
+                "filename": ser.filename,
+                "index": ind,
+                "record": recind,
+                "total": ser.total_records,
+            }
+        )
         out.append(ndf)
     index = pd.concat(out).set_index("index")
 
@@ -226,11 +233,12 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
         sl = slice(key * save_size, (key + 1) * save_size)
         idf = index.iloc[sl]
         recs = idf.record.copy()
-        recs -= (
-            index.set_index("filename").loc[idf.filename.unique()[0], "record"].iloc[0]
-        )
+        uniq_f = list(pd.unique(idf.filename))
+        first_ser = idf[idf.filename == uniq_f[0]]
+        diff = first_ser.iloc[0].record - (first_ser.iloc[0].total - len(first_ser))
+        recs -= diff
         with xr.open_mfdataset(
-            idf.filename.unique(), engine="h5netcdf", concat_dim="rec", combine="nested"
+            uniq_f, engine="h5netcdf", concat_dim="rec", combine="nested"
         ) as ds:
             fnames = xr.DataArray(idf.filename.apply(lambda x: str(x)), dims=("rec"),)
             dsl = (
@@ -238,7 +246,6 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
                 .assign_coords({"combined_filename": fnames})
                 .chunk(dict(rec=chunk_size, gy=ds.dims["gy"], gx=ds.dims["gx"]))
             )
-
             dsl.attrs = {
                 "erebos_version": __version__,
             }
