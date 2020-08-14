@@ -291,12 +291,14 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
                 "validation_loss": val_loss,
             }
             yield checkpoint_dict
+        else:
+            yield
     cleanup()
 
 
 def train(rank, world_size, train_path, val_path, batch_size, run_name, load_from):
     if rank != 0:
-        dist_train(rank, world_size, train_path, val_path, batch_size, load_from)
+        list(dist_train(rank, world_size, train_path, val_path, batch_size, load_from))
     else:
         with mlflow.start_run(run_name=run_name):
             mlflow.set_tag("mlflow.source.git.commit", git_commit)
