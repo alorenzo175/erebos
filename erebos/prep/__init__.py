@@ -246,6 +246,14 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
                 .assign_coords({"combined_filename": fnames})
                 .chunk(dict(rec=chunk_size, gy=ds.dims["gy"], gx=ds.dims["gx"]))
             )
+            assert (
+                not dsl[[f"CMI_C{i:02d}" for i in range(1, 17)]]
+                .isnull()
+                .to_array()
+                .any()
+                .compute()
+                .item()
+            )
             dsl.attrs = {
                 "erebos_version": __version__,
             }
