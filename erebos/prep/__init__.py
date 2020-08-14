@@ -235,8 +235,9 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
         recs = idf.record.copy()
         uniq_f = list(pd.unique(idf.filename))
         first_ser = idf[idf.filename == uniq_f[0]]
-        diff = first_ser.iloc[0].record - (first_ser.iloc[0].total - len(first_ser))
-        recs -= diff
+        if key != 0:
+            diff = first_ser.iloc[0].record - (first_ser.iloc[0].total - len(first_ser))
+            recs -= diff
         with xr.open_mfdataset(
             uniq_f, engine="h5netcdf", concat_dim="rec", combine="nested"
         ) as ds:
