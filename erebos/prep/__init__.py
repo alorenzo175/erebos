@@ -211,6 +211,8 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
     last = 0
     lasttot = 0
     for _, ser in info_df.reset_index(drop=True).iterrows():
+        if ser.not_nan_records == 0:
+            continue
         ind = np.arange(ser.not_nan_records) + last
         recind = np.delete(np.arange(ser.total_records), ser.nan_locs) + lasttot
         last += ser.not_nan_records
@@ -221,7 +223,7 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
 
     for key in range(math.ceil(len(index) / save_size)):
         logger.debug("Saving data from batch %s", key)
-        sl = slice(key * save_size, (key + 1) * save_size + 1)
+        sl = slice(key * save_size, (key + 1) * save_size)
         idf = index.iloc[sl]
         recs = idf.record.copy()
         recs -= (
