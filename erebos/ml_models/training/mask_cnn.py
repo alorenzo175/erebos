@@ -2,9 +2,11 @@ import logging
 import math
 import os
 from pathlib import Path
+import tempfile
 import time
 
 
+import mlflow
 import numpy as np
 import pandas as pd
 import torch
@@ -17,6 +19,13 @@ import torch.multiprocessing as mp
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 import xarray as xr
+
+
+from erebos._version import get_versions
+
+git_commit = get_versions()["full-revisionid"]
+if get_versions()["dirty"]:
+    git_commit += ".dirty"
 
 
 logger = logging.getLogger(__name__)
@@ -190,16 +199,33 @@ def validate(device, validation_loader, model, loss_function):
     return np.array(losses).mean()
 
 
-def dist_train(rank, world_size, train_path, val_path, batch_size):
+def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
     logger = setup(rank, world_size)
     logger.info("Training on rank %s", rank)
 
+    params = {
+        "learning_rate": 0.001,
+        "momentum": 0.9,
+        "optimizer": "sgd",
+        "loss": "bce",
+    }
+    mlflow.log_params(params)
     torch.cuda.set_device(rank)
     model = UNet(18, 1, 0)
     ddp_model = DDP(model.to(rank), device_ids=[rank])
+    optimizer = optim.SGD(
+        ddp_model.parameters(), lr=params["learning_rate"], momentum=param["momentum"]
+    )
+    startat = 0
+    if load_from is not None:
+        map_location = {"cuda:0": f"cuda:{rank:d}"}
+        chkpoint = torch.load(load_from, map_location=map_location)
+        ddp_model.load_state_dict(chkpoint["model_state_dict"])
+        optimizer.load_state_dict(chkpoint["optimizer_state_dict"])
+        startat = chkpoint["epoch"] + 1
 
     criterion = torch.nn.BCELoss().to(rank)
-    optimizer = optim.SGD(ddp_model.parameters(), lr=0.001, momentum=0.9)
+
     dataset = BatchedZarrData(train_path, batch_size)
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
@@ -216,7 +242,7 @@ def dist_train(rank, world_size, train_path, val_path, batch_size):
         val_dataset, batch_size=None, shuffle=False, num_workers=0, sampler=val_sampler
     )
 
-    for epoch in range(100):
+    for epoch in range(startat, 100):
         logger.info("Begin training of epoch %s", epoch)
         sampler.set_epoch(epoch)
         losses = []
@@ -241,6 +267,8 @@ def dist_train(rank, world_size, train_path, val_path, batch_size):
                     epoch,
                     np.array(losses).mean(),
                 )
+            if i > 1:
+                break
         dur = time.time() - a
         val_loss = validate(rank, validation_loader, ddp_model, criterion)
         train_loss = np.array(losses).mean()
@@ -252,6 +280,7 @@ def dist_train(rank, world_size, train_path, val_path, batch_size):
             val_loss,
         )
         if rank == 0:
+            dist.barrier()
             checkpoint_dict = {
                 "epoch": epoch,
                 "model_state_dict": ddp_model.state_dict(),
@@ -260,5 +289,30 @@ def dist_train(rank, world_size, train_path, val_path, batch_size):
                 "duration": dur,
                 "validation_loss": val_loss,
             }
-
+            yield checkpoint_dict
     cleanup()
+
+
+def train(rank, world_size, train_path, val_path, batch_size, run_name, load_from):
+    if rank != 0:
+        dist_train(rank, world_size, train_path, val_path, batch_size, load_from)
+    else:
+        with mlflow.start_run(run_name=run_name):
+            mlflow.set_tag("mlflow.source.git.commit", git_commit)
+            for chkpoint in dist_train(
+                rank, world_size, train_path, val_path, batch_size, load_from
+            ):
+                mlflow.log_metric(
+                    key="train_loss",
+                    value=chkpoint["train_loss"],
+                    step=chkpoint["epoch"],
+                )
+                mlflow.log_metric(
+                    key="validation_loss",
+                    value=chkpoint["validation_loss"],
+                    step=chkpoint["epoch"],
+                )
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tfile = Path(tmpdir) / "cloud_mask_unet.chk"
+                    torch.save(chkpoint, tfile)
+                    mlflow.log_artifact(str(tfile))
