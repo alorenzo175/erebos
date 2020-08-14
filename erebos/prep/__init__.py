@@ -214,30 +214,28 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
         if ser.not_nan_records == 0:
             continue
         ind = np.arange(ser.not_nan_records) + last
-        recind = np.delete(np.arange(ser.total_records), ser.nan_locs) + lasttot
+        recind = np.delete(np.arange(ser.total_records), ser.nan_locs)
         last += ser.not_nan_records
-        lasttot += ser.total_records
         ndf = pd.DataFrame(
             {
                 "filename": ser.filename,
                 "index": ind,
                 "record": recind,
-                "total": ser.total_records,
+                "prevtot": lasttot,
             }
         )
+        lasttot += ser.total_records
         out.append(ndf)
     index = pd.concat(out).set_index("index")
 
     for key in range(math.ceil(len(index) / save_size)):
         logger.debug("Saving data from batch %s", key)
         sl = slice(key * save_size, (key + 1) * save_size)
-        idf = index.iloc[sl]
-        recs = idf.record.copy()
+        idf = index.iloc[sl].copy()
         uniq_f = list(pd.unique(idf.filename))
-        first_ser = idf[idf.filename == uniq_f[0]]
-        if key != 0:
-            diff = first_ser.iloc[0].record - (first_ser.iloc[0].total - len(first_ser))
-            recs -= diff
+        firstprev = idf.loc[idf.filename == uniq_f[0], "prevtot"].iloc[0]
+        idf.loc[:, "prevtot"] -= firstprev
+        recs = idf.record + idf.prevtot
         with xr.open_mfdataset(
             uniq_f, engine="h5netcdf", concat_dim="rec", combine="nested"
         ) as ds:
