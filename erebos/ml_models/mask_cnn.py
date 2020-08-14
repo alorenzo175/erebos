@@ -22,7 +22,7 @@ import xarray as xr
 logger = logging.getLogger(__name__)
 
 
-class MaskData(Dataset):
+class BatchedZarrData(Dataset):
     def __init__(
         self, dataset, batch_size, dtype=torch.float32, adjusted=0, logger=logger,
     ):
@@ -173,7 +173,24 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def dist_train(rank, world_size, train_path, batch_size):
+def validate(device, validation_loader, model, loss_function):
+    losses = []
+    model.eval()
+    with torch.no_grad():
+        for i, (X, mask, y) in enumerate(validation_loader):
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            mask = mask.to(device, non_blocking=True)
+            outputs = model(X)
+            c = (mask.shape[3] - outputs.shape[3]) // 2
+            m = F.pad(mask, (-c, -c, -c, -c))
+            loss = loss_function(outputs[m], y)
+            losses.append(loss.item())
+    model.train()
+    return np.array(losses).mean()
+
+
+def dist_train(rank, world_size, train_path, val_path, batch_size):
     logger = setup(rank, world_size)
     logger.info("Training on rank %s", rank)
 
@@ -183,12 +200,20 @@ def dist_train(rank, world_size, train_path, batch_size):
 
     criterion = torch.nn.BCELoss().to(rank)
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001, momentum=0.9)
-    dataset = MaskData(train_path, batch_size)
+    dataset = BatchedZarrData(train_path, batch_size)
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
     )
     loader = DataLoader(
         dataset, batch_size=None, shuffle=False, num_workers=0, sampler=sampler,
+    )
+
+    val_dataset = BatchedZarrData(val_path, batch_size)
+    val_sampler = DistributedSampler(
+        val_dataset, num_replicas=world_size, rank=rank, shuffle=False
+    )
+    validation_loader = DataLoader(
+        val_dataset, batch_size=None, shuffle=False, num_workers=0, sampler=val_sampler
     )
 
     for epoch in range(100):
@@ -217,10 +242,23 @@ def dist_train(rank, world_size, train_path, batch_size):
                     np.array(losses).mean(),
                 )
         dur = time.time() - a
+        val_loss = validate(rank, validation_loader, ddp_model, criterion)
+        train_loss = np.array(losses).mean()
         logger.info(
-            "Epoch %s completed with average loss %s and time %s",
+            "Epoch %s in %s completed with average loss %s and validation loss %s",
             epoch,
-            np.array(losses).mean(),
             dur,
+            train_loss,
+            val_loss,
         )
+        if rank == 0:
+            checkpoint_dict = {
+                "epoch": epoch,
+                "model_state_dict": ddp_model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "train_loss": train_loss,
+                "duration": dur,
+                "validation_loss": val_loss,
+            }
+
     cleanup()
