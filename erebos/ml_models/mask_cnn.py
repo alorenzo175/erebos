@@ -1,9 +1,12 @@
 import logging
+import math
 import os
+from pathlib import Path
 import time
 
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.distributed as dist
 from torch import nn
@@ -11,43 +14,61 @@ import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.optim as optim
 import torch.multiprocessing as mp
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 import xarray as xr
 
 
 logger = logging.getLogger(__name__)
 
 
-def load_batch(dataset, device, records=500, dtype=torch.float32, adjusted=0):
-    vars_ = [f"CMI_C{i:02d}" for i in range(1, 17)] + ["solar_zenith", "solar_azimuth"]
-    ds = xr.open_zarr(dataset)
-    s = 0
-    while s < ds.dims["rec"]:
-        rslice = slice(s, s + records)
-        dsl = ds.isel(rec=rslice).load()
+class MaskData(Dataset):
+    def __init__(
+        self, dataset, batch_size, dtype=torch.float32, adjusted=0, logger=logger,
+    ):
+        super().__init__()
+        self.logger = logger
+        self.batch_size = batch_size
+        self.dtype = dtype
+        self.adjusted = adjusted
+        self.vars_ = [f"CMI_C{i:02d}" for i in range(1, 17)] + [
+            "solar_zenith",
+            "solar_azimuth",
+        ]
+        self.setup(dataset)
+
+    def setup(self, dataset):
+        dp = Path(dataset)
+        paths = sorted(
+            list(dp.parent.glob(str(dp.name) + "*")),
+            key=lambda x: int(x.suffix.lstrip(".")),
+        )
+        datasets = [xr.open_zarr(str(p)) for p in paths]
+        self.dataset = xr.concat(datasets, dim="rec")
+
+    def __len__(self):
+        return math.ceil(self.dataset.dims["rec"] / self.batch_size)
+
+    def __getitem__(self, key):
+        if key >= len(self):
+            raise KeyError(f"{key} out of range")
+
+        sl = slice(key * self.batch_size, (key + 1) * self.batch_size)
+        dsl = self.dataset.isel(rec=sl)
+
         X = torch.tensor(
-            dsl[vars_]
+            dsl[self.vars_]
             .to_array()
             .transpose("rec", "variable", "gy", "gx", transpose_coords=False)
             .values,
-            dtype=dtype,
-            device=device,
+            dtype=self.dtype,
         )
         mask = torch.tensor(
-            dsl.label_mask.sel(adjusted=adjusted).values[:, np.newaxis],
+            dsl.label_mask.sel(adjusted=self.adjusted).values[:, np.newaxis],
             dtype=torch.bool,
-            device=device,
         )
-        y = torch.tensor((dsl.cloud_layers != 0).values, dtype=dtype, device=device,)
-        nanrecs = (
-            torch.isnan(X).any(3).any(2).any(1)
-            | torch.isnan(y)
-            | ~mask.any(3).any(2).any(1)
-        )
-        s += records
-        if nanrecs.sum().item() == records:
-            continue
-        yield X[~nanrecs], mask[~nanrecs], y[~nanrecs]
-    ds.close()
+        y = torch.tensor((dsl.cloud_layers != 0).values, dtype=self.dtype,)
+        return X, mask, y
 
 
 class UNet(nn.Module):
@@ -137,37 +158,64 @@ class UNet(nn.Module):
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "38288"
-
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    logger = logging.getLogger(f"train{rank}")
+    formatter = logging.Formatter("%(asctime)s  %(message)s")
+    handler = logging.FileHandler(f"train.log.{rank}")
+    handler.setFormatter(formatter)
+    handler.setLevel("DEBUG")
+    logger.setLevel("INFO")
+    logger.addHandler(handler)
+    return logger
 
 
 def cleanup():
     dist.destroy_process_group()
 
 
-def dist_train(rank, world_size, train_path):
-    setup(rank, world_size)
+def dist_train(rank, world_size, train_path, batch_size):
+    logger = setup(rank, world_size)
     logger.info("Training on rank %s", rank)
 
-    device = torch.device(f"cuda:{rank}")
-    model = UNet(18, 1, 0).to(device)
-    ddp_model = DDP(model)
+    torch.cuda.set_device(rank)
+    model = UNet(18, 1, 0)
+    ddp_model = DDP(model.to(rank), device_ids=[rank])
 
-    criterion = torch.nn.BCELoss()
+    criterion = torch.nn.BCELoss().to(rank)
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001, momentum=0.9)
+    dataset = MaskData(train_path, batch_size)
+    sampler = DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=True
+    )
+    loader = DataLoader(
+        dataset, batch_size=None, shuffle=False, num_workers=0, sampler=sampler,
+    )
 
     for epoch in range(100):
+        logger.info("Begin training of epoch %s", epoch)
+        sampler.set_epoch(epoch)
         losses = []
         a = time.time()
-        for i, (X, mask, y) in enumerate(load_batch(train_path, device, 250)):
-            optimizer.zero_grad()
+        for i, (X, mask, y) in enumerate(loader):
+            logger.debug("On step %s of epoch %s with %s recs", i, epoch, X.shape[0])
+            X = X.to(rank, non_blocking=True)
+            y = y.to(rank, non_blocking=True)
+            mask = mask.to(rank, non_blocking=True)
             outputs = ddp_model(X)
             c = (mask.shape[3] - outputs.shape[3]) // 2
             m = F.pad(mask, (-c, -c, -c, -c))
             loss = criterion(outputs[m], y)
             losses.append(loss.item())
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            if i % 100 == 0:
+                logger.info(
+                    "Step %s of epoch %s, mean loss %s",
+                    i,
+                    epoch,
+                    np.array(losses).mean(),
+                )
         dur = time.time() - a
         logger.info(
             "Epoch %s completed with average loss %s and time %s",
