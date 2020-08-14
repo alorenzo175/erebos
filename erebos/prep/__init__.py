@@ -221,7 +221,7 @@ def concat_datasets(dataset_json, outpath, save_size, chunk_size):
 
     for key in range(math.ceil(len(index) / save_size)):
         logger.debug("Saving data from batch %s", key)
-        sl = slice(key * save_size, (key + 1) * save_size)
+        sl = slice(key * save_size, (key + 1) * save_size + 1)
         idf = index.iloc[sl]
         recs = idf.record.copy()
         recs -= (
