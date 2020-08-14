@@ -168,12 +168,13 @@ def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "38288"
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
-    logger = logging.getLogger(f"train{rank}")
-    formatter = logging.Formatter("%(asctime)s  %(message)s")
-    handler = logging.FileHandler(f"train.log.{rank}")
+    logger = logging.getLogger()
+    formatter = logging.Formatter("%(asctime)s %(message)s")
+    handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     handler.setLevel("DEBUG")
     logger.setLevel("INFO")
+    logger.handlers = []
     logger.addHandler(handler)
     return logger
 
@@ -209,12 +210,13 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
         "optimizer": "sgd",
         "loss": "bce",
     }
-    mlflow.log_params(params)
+    if rank == 0:
+        mlflow.log_params(params)
     torch.cuda.set_device(rank)
     model = UNet(18, 1, 0)
     ddp_model = DDP(model.to(rank), device_ids=[rank])
     optimizer = optim.SGD(
-        ddp_model.parameters(), lr=params["learning_rate"], momentum=param["momentum"]
+        ddp_model.parameters(), lr=params["learning_rate"], momentum=params["momentum"]
     )
     startat = 0
     if load_from is not None:
@@ -267,8 +269,7 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
                     epoch,
                     np.array(losses).mean(),
                 )
-            if i > 1:
-                break
+
         dur = time.time() - a
         val_loss = validate(rank, validation_loader, ddp_model, criterion)
         train_loss = np.array(losses).mean()

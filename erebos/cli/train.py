@@ -322,28 +322,34 @@ def cloud_mask(
 @set_log_level
 @mlflow_options
 @click.argument("experiment_name")
-@click.argument("--run-name")
-@click.argument("--gpus", type=int)
+@click.argument("rank", type=int)
+@click.argument("world-size", type=int)
+@click.option("--run-name")
 @click.option("--batch-size", type=int, default=600)
 @click.option(
     "--train-file",
-    type=PathParamType(exists=True, resolve_path=True),
+    type=PathParamType(resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/train.zarr",
 )
 @click.option(
     "--validate-file",
-    type=PathParamType(exists=True, resolve_path=True),
+    type=PathParamType(resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
 )
-def cloud_mask(experiment_name, run_name, train_file, validate_file, gpus, batch_size):
+def cloud_mask_cnn(
+    experiment_name, run_name, train_file, validate_file, batch_size, rank, world_size
+):
+    """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment(experiment_name)
-
-    mp.spawn(
-        training.mask_cnn.train,
-        args=(gpus, train_file, validate_file, batch_size, run_name, None),
-        nprocs=gpus,
-        join=True,
+    training.mask_cnn.train(
+        rank,
+        world_size,
+        str(train_file),
+        str(validate_file),
+        batch_size,
+        run_name,
+        None,
     )
