@@ -281,7 +281,6 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
             val_loss,
         )
         if rank == 0:
-            dist.barrier()
             checkpoint_dict = {
                 "epoch": epoch,
                 "model_state_dict": ddp_model.state_dict(),
