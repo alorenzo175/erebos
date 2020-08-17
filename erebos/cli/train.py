@@ -327,6 +327,7 @@ def cloud_mask(
 @click.option("--run-name")
 @click.option("--batch-size", type=int, default=600)
 @click.option("--load-from-run")
+@click.option("--backend", default="gloo")
 @click.option(
     "--train-file",
     type=PathParamType(resolve_path=True),
@@ -345,6 +346,7 @@ def cloud_mask_cnn(
     batch_size,
     rank,
     world_size,
+    backend,
     load_from_run,
 ):
     """Train a Unet CNN to predict a cloud mask"""
@@ -360,6 +362,7 @@ def cloud_mask_cnn(
     training.mask_cnn.train(
         rank,
         world_size,
+        backend,
         str(train_file),
         str(validate_file),
         batch_size,

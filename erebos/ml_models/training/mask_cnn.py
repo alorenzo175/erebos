@@ -164,10 +164,10 @@ class UNet(nn.Module):
         return out
 
 
-def setup(rank, world_size):
+def setup(rank, world_size, backend):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "38288"
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
     logger = logging.getLogger()
     formatter = logging.Formatter("%(asctime)s %(message)s")
     handler = logging.StreamHandler()
@@ -200,8 +200,8 @@ def validate(device, validation_loader, model, loss_function):
     return np.array(losses).mean()
 
 
-def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
-    logger = setup(rank, world_size)
+def dist_train(rank, world_size, backend, train_path, val_path, batch_size, load_from):
+    logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
 
     params = {
@@ -233,7 +233,12 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
         dataset, num_replicas=world_size, rank=rank, shuffle=True
     )
     loader = DataLoader(
-        dataset, batch_size=None, shuffle=False, num_workers=0, sampler=sampler,
+        dataset,
+        batch_size=None,
+        shuffle=False,
+        num_workers=0,
+        sampler=sampler,
+        pin_memory=True,
     )
 
     val_dataset = BatchedZarrData(val_path, batch_size)
@@ -241,7 +246,12 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
         val_dataset, num_replicas=world_size, rank=rank, shuffle=False
     )
     validation_loader = DataLoader(
-        val_dataset, batch_size=None, shuffle=False, num_workers=0, sampler=val_sampler
+        val_dataset,
+        batch_size=None,
+        shuffle=False,
+        num_workers=0,
+        sampler=val_sampler,
+        pin_memory=True,
     )
 
     for epoch in range(startat, 100):
@@ -295,14 +305,20 @@ def dist_train(rank, world_size, train_path, val_path, batch_size, load_from):
     cleanup()
 
 
-def train(rank, world_size, train_path, val_path, batch_size, run_name, load_from):
+def train(
+    rank, world_size, backend, train_path, val_path, batch_size, run_name, load_from
+):
     if rank != 0:
-        list(dist_train(rank, world_size, train_path, val_path, batch_size, load_from))
+        list(
+            dist_train(
+                rank, world_size, backend, train_path, val_path, batch_size, load_from
+            )
+        )
     else:
         with mlflow.start_run(run_name=run_name):
             mlflow.set_tag("mlflow.source.git.commit", git_commit)
             for chkpoint in dist_train(
-                rank, world_size, train_path, val_path, batch_size, load_from
+                rank, world_size, backend, train_path, val_path, batch_size, load_from
             ):
                 mlflow.log_metric(
                     key="train_loss",
