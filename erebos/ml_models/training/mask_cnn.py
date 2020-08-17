@@ -165,8 +165,6 @@ class UNet(nn.Module):
 
 
 def setup(rank, world_size, backend):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "38288"
     dist.init_process_group(backend, rank=rank, world_size=world_size)
     logger = logging.getLogger()
     formatter = logging.Formatter("%(asctime)s %(message)s")

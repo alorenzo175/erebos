@@ -2,6 +2,7 @@ from functools import partial
 import logging
 import os
 from pathlib import Path
+import socket
 
 
 import click
@@ -329,6 +330,10 @@ def cloud_mask(
 @click.option("--load-from-run")
 @click.option("--backend", default="gloo")
 @click.option(
+    "--master-addr", envvar="MASTER_ADDR", show_envvar=True, default="localhost"
+)
+@click.option("--master-port", envvar="MASTER_PORT", show_envvar=True, type=str)
+@click.option(
     "--train-file",
     type=PathParamType(resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/train.zarr",
@@ -348,9 +353,20 @@ def cloud_mask_cnn(
     world_size,
     backend,
     load_from_run,
+    master_addr,
+    master_port,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
+
+    os.environ["MASTER_ADDR"] = master_addr
+    if master_port is None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        master_port = str(s.getsockname()[1])
+        s.close()
+    os.environ["MASTER_PORT"] = master_port
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment(experiment_name)
