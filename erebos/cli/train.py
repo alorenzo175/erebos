@@ -326,6 +326,7 @@ def cloud_mask(
 @click.argument("world-size", type=int)
 @click.option("--run-name")
 @click.option("--batch-size", type=int, default=600)
+@click.option("--load-from-run")
 @click.option(
     "--train-file",
     type=PathParamType(resolve_path=True),
@@ -337,13 +338,25 @@ def cloud_mask(
     default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
 )
 def cloud_mask_cnn(
-    experiment_name, run_name, train_file, validate_file, batch_size, rank, world_size
+    experiment_name,
+    run_name,
+    train_file,
+    validate_file,
+    batch_size,
+    rank,
+    world_size,
+    load_from_run,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment(experiment_name)
+    if load_from_run is not None:
+        client = mlflow.tracking.MlflowClient()
+        load_from = client.download_artifacts(load_from_run, "cloud_mask_unet.chk")
+    else:
+        load_from = None
     training.mask_cnn.train(
         rank,
         world_size,
@@ -351,5 +364,5 @@ def cloud_mask_cnn(
         str(validate_file),
         batch_size,
         run_name,
-        None,
+        load_from,
     )
