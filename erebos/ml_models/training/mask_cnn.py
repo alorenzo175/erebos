@@ -236,7 +236,7 @@ def dist_train(
         momentum=params["momentum"],
     )
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", threshold=3, cooldown=1
+        optimizer, "min", patience=3, cooldown=1
     )
     startat = 0
     if load_from is not None:
