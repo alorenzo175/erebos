@@ -235,7 +235,9 @@ def dist_train(
         lr=params["initial_learning_rate"],
         momentum=params["momentum"],
     )
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, "min", threshold=3, cooldown=1
+    )
     startat = 0
     if load_from is not None:
         map_location = {"cuda:0": f"cuda:{rank:d}"}
