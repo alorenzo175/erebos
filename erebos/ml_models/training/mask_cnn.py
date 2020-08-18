@@ -40,7 +40,7 @@ class BatchedZarrData(Dataset):
         dtype=torch.float32,
         adjusted=0,
         logger=logger,
-        load_entire_dataset=False,
+        mem_limit=0,
     ):
         super().__init__()
         self.logger = logger
@@ -51,9 +51,12 @@ class BatchedZarrData(Dataset):
             "solar_zenith",
             "solar_azimuth",
         ]
-        self.setup(dataset, load_entire_dataset)
+        self.all_vars = self.vars_.copy() + ["label_mask", "cloud_layers"]
+        self.mem_limit = mem_limit
+        self.tempkeys = []
+        self.setup(dataset)
 
-    def setup(self, dataset, load_entire_dataset):
+    def setup(self, dataset):
         dp = Path(dataset)
         paths = sorted(
             list(dp.parent.glob(str(dp.name) + "*")),
@@ -61,19 +64,30 @@ class BatchedZarrData(Dataset):
         )
         datasets = [xr.open_zarr(str(p)) for p in paths]
         self.dataset = xr.concat(datasets, dim="rec")
-        if load_entire_dataset:
-            self.dataset = self.dataset.load()
+        self.bytes_per_key = (
+            self.dataset[self.all_vars].isel(rec=slice(0, self.batch_size)).nbytes
+        )
 
     def __len__(self):
         return math.ceil(self.dataset.dims["rec"] / self.batch_size)
+
+    def load_data(self, key):
+        if key not in self.tempkeys:
+            num_slices = max(self.mem_limit // self.bytes_per_key, 1)
+            large_slice = slice(
+                key * self.batch_size, (key + num_slices) * self.batch_size
+            )
+            self.tempkeys = range(key, key + num_slices, 1)
+            self.tempdata = self.dataset.sel(rec=large_slice)[self.all_vars].load()
+
+        sl = slice(key * self.batch_size, (key + 1) * self.batch_size)
+        return self.tempdata.sel(rec=sl)
 
     def __getitem__(self, key):
         if key >= len(self):
             raise KeyError(f"{key} out of range")
 
-        sl = slice(key * self.batch_size, (key + 1) * self.batch_size)
-        dsl = self.dataset.isel(rec=sl)
-
+        dsl = self.load_data(key)
         X = torch.tensor(
             dsl[self.vars_]
             .to_array()
@@ -223,7 +237,8 @@ def dist_train(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
-    load_entire_dataset,
+    mem_limit,
+    val_mem_limit,
 ):
     logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
@@ -255,13 +270,10 @@ def dist_train(
     criterion = torch.nn.BCEWithLogitsLoss().to(rank)
 
     dataset = BatchedZarrData(
-        train_path,
-        batch_size,
-        adjusted=adj_for_cloud,
-        load_entire_dataset=load_entire_dataset,
+        train_path, batch_size, adjusted=adj_for_cloud, mem_limit=mem_limit,
     )
     sampler = DistributedSampler(
-        dataset, num_replicas=world_size, rank=rank, shuffle=True
+        dataset, num_replicas=world_size, rank=rank, shuffle=False,
     )
     loader = DataLoader(
         dataset,
@@ -273,10 +285,7 @@ def dist_train(
     )
 
     val_dataset = BatchedZarrData(
-        val_path,
-        batch_size,
-        adjusted=adj_for_cloud,
-        load_entire_dataset=load_entire_dataset,
+        val_path, batch_size, adjusted=adj_for_cloud, mem_limit=val_mem_limit
     )
     val_sampler = DistributedSampler(
         val_dataset, num_replicas=world_size, rank=rank, shuffle=False
@@ -357,7 +366,8 @@ def train(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
-    load_entire_dataset,
+    mem_limit,
+    val_mem_limit,
 ):
     if rank != 0:
         list(
@@ -372,7 +382,8 @@ def train(
                 epochs,
                 adj_for_cloud,
                 use_mixed_precision,
-                load_entire_dataset,
+                mem_limit,
+                val_mem_limit,
             )
         )
     else:
@@ -389,7 +400,8 @@ def train(
                 epochs,
                 adj_for_cloud,
                 use_mixed_precision,
-                load_entire_dataset,
+                mem_limit,
+                val_mem_limit,
             ):
                 mlflow.log_metric(
                     key="train_loss",
