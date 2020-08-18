@@ -63,7 +63,7 @@ class BatchedZarrData(Dataset):
         if key >= len(self):
             raise KeyError(f"{key} out of range")
         sl = slice(key * self.batch_size, (key + 1) * self.batch_size)
-        dsl = self.dataset.sel(rec=sl)
+        dsl = self.dataset.isel(rec=sl)
         X = torch.tensor(
             dsl[self.vars_]
             .to_array()
