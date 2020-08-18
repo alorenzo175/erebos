@@ -228,7 +228,7 @@ def dist_train(
     if rank == 0:
         mlflow.log_params(params)
     torch.cuda.set_device(rank)
-    model = UNet(18, 1, adj_for_cloud)
+    model = UNet(18, 1, 0)
     ddp_model = DDP(model.to(rank), device_ids=[rank])
     scaler = GradScaler(enabled=use_mixed_precision)
     optimizer = optim.SGD(
@@ -245,7 +245,7 @@ def dist_train(
 
     criterion = torch.nn.BCEWithLogitsLoss().to(rank)
 
-    dataset = BatchedZarrData(train_path, batch_size)
+    dataset = BatchedZarrData(train_path, batch_size, adjusted=adj_for_cloud)
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
     )
@@ -258,7 +258,7 @@ def dist_train(
         pin_memory=True,
     )
 
-    val_dataset = BatchedZarrData(val_path, batch_size)
+    val_dataset = BatchedZarrData(val_path, batch_size, adjusted=adj_for_cloud)
     val_sampler = DistributedSampler(
         val_dataset, num_replicas=world_size, rank=rank, shuffle=False
     )
