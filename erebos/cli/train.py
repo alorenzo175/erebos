@@ -343,6 +343,8 @@ def cloud_mask(
     type=PathParamType(resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
 )
+@click.option("--epochs", type=int, default=500)
+@click.option("--adj-for-cloud", is_flag=True)
 def cloud_mask_cnn(
     experiment_name,
     run_name,
@@ -355,6 +357,8 @@ def cloud_mask_cnn(
     load_from_run,
     master_addr,
     master_port,
+    epochs,
+    adj_for_cloud,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
@@ -384,4 +388,6 @@ def cloud_mask_cnn(
         batch_size,
         run_name,
         load_from,
+        epochs,
+        int(adj_for_cloud),
     )

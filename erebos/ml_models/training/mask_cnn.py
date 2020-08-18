@@ -198,7 +198,17 @@ def validate(device, validation_loader, model, loss_function):
     return np.array(losses).mean()
 
 
-def dist_train(rank, world_size, backend, train_path, val_path, batch_size, load_from):
+def dist_train(
+    rank,
+    world_size,
+    backend,
+    train_path,
+    val_path,
+    batch_size,
+    load_from,
+    epochs,
+    adj_for_cloud,
+):
     logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
 
@@ -211,7 +221,7 @@ def dist_train(rank, world_size, backend, train_path, val_path, batch_size, load
     if rank == 0:
         mlflow.log_params(params)
     torch.cuda.set_device(rank)
-    model = UNet(18, 1, 0)
+    model = UNet(18, 1, adj_for_cloud)
     ddp_model = DDP(model.to(rank), device_ids=[rank])
     optimizer = optim.SGD(
         ddp_model.parameters(), lr=params["learning_rate"], momentum=params["momentum"]
@@ -252,7 +262,7 @@ def dist_train(rank, world_size, backend, train_path, val_path, batch_size, load
         pin_memory=True,
     )
 
-    for epoch in range(startat, 100):
+    for epoch in range(startat, epochs):
         logger.info("Begin training of epoch %s", epoch)
         sampler.set_epoch(epoch)
         losses = []
@@ -304,19 +314,44 @@ def dist_train(rank, world_size, backend, train_path, val_path, batch_size, load
 
 
 def train(
-    rank, world_size, backend, train_path, val_path, batch_size, run_name, load_from
+    rank,
+    world_size,
+    backend,
+    train_path,
+    val_path,
+    batch_size,
+    run_name,
+    load_from,
+    epochs,
+    adj_for_cloud,
 ):
     if rank != 0:
         list(
             dist_train(
-                rank, world_size, backend, train_path, val_path, batch_size, load_from
+                rank,
+                world_size,
+                backend,
+                train_path,
+                val_path,
+                batch_size,
+                load_from,
+                epochs,
+                adj_for_cloud,
             )
         )
     else:
         with mlflow.start_run(run_name=run_name):
             mlflow.set_tag("mlflow.source.git.commit", git_commit)
             for chkpoint in dist_train(
-                rank, world_size, backend, train_path, val_path, batch_size, load_from
+                rank,
+                world_size,
+                backend,
+                train_path,
+                val_path,
+                batch_size,
+                load_from,
+                epochs,
+                adj_for_cloud,
             ):
                 mlflow.log_metric(
                     key="train_loss",
