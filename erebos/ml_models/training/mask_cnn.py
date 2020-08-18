@@ -219,7 +219,7 @@ def dist_train(
     logger.info("Training on rank %s", rank)
 
     params = {
-        "learning_rate": 0.001,
+        "initial_learning_rate": 0.1,
         "momentum": 0.9,
         "optimizer": "sgd",
         "loss": "bce",
@@ -231,8 +231,11 @@ def dist_train(
     ddp_model = DDP(model.to(rank), device_ids=[rank])
     scaler = GradScaler(enabled=use_mixed_precision)
     optimizer = optim.SGD(
-        ddp_model.parameters(), lr=params["learning_rate"], momentum=params["momentum"]
+        ddp_model.parameters(),
+        lr=params["initial_learning_rate"],
+        momentum=params["momentum"],
     )
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     startat = 0
     if load_from is not None:
         map_location = {"cuda:0": f"cuda:{rank:d}"}
@@ -301,6 +304,7 @@ def dist_train(
 
         dur = time.time() - a
         val_loss = validate(rank, validation_loader, ddp_model, criterion)
+        scheduler.step(val_loss)
         train_loss = np.array(losses).mean()
         logger.info(
             "Epoch %s in %s completed with average loss %s and validation loss %s",
