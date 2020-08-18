@@ -345,6 +345,7 @@ def cloud_mask(
 )
 @click.option("--epochs", type=int, default=500)
 @click.option("--adj-for-cloud", is_flag=True)
+@click.option("--use-mixed-precision", is_flag=True)
 def cloud_mask_cnn(
     experiment_name,
     run_name,
@@ -359,6 +360,7 @@ def cloud_mask_cnn(
     master_port,
     epochs,
     adj_for_cloud,
+    use_mixed_precision,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
@@ -390,4 +392,5 @@ def cloud_mask_cnn(
         load_from,
         epochs,
         int(adj_for_cloud),
+        use_mixed_precision,
     )

@@ -12,6 +12,7 @@ import pandas as pd
 import torch
 import torch.distributed as dist
 from torch import nn
+from torch.cuda.amp import autocast, GradScaler
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.optim as optim
@@ -145,7 +146,7 @@ class UNet(nn.Module):
         )
 
         self.out = nn.Sequential(
-            nn.Conv2d(down0_out_chan, n_classes, kernel_size=1, stride=1), nn.Sigmoid()
+            nn.Conv2d(down0_out_chan, n_classes, kernel_size=1, stride=1)
         )
 
     def _up_and_conv(self, x, x_skip, up, conv):
@@ -161,6 +162,11 @@ class UNet(nn.Module):
         x = self._up_and_conv(x, x1, self.up1, self.upconv1)
         x = self._up_and_conv(x, x0, self.up0, self.upconv0)
         out = self.out(x)
+        return out
+
+    def forward_prob(self, x):
+        out = self.forward(x)
+        out = nn.Sigmoid()(out)
         return out
 
 
@@ -208,6 +214,7 @@ def dist_train(
     load_from,
     epochs,
     adj_for_cloud,
+    use_mixed_precision,
 ):
     logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
@@ -223,6 +230,7 @@ def dist_train(
     torch.cuda.set_device(rank)
     model = UNet(18, 1, adj_for_cloud)
     ddp_model = DDP(model.to(rank), device_ids=[rank])
+    scaler = GradScaler(enabled=use_mixed_precision)
     optimizer = optim.SGD(
         ddp_model.parameters(), lr=params["learning_rate"], momentum=params["momentum"]
     )
@@ -232,9 +240,10 @@ def dist_train(
         chkpoint = torch.load(load_from, map_location=map_location)
         ddp_model.load_state_dict(chkpoint["model_state_dict"])
         optimizer.load_state_dict(chkpoint["optimizer_state_dict"])
+        scaler.load_state_dict(chkpoint["scaler_state_dict"])
         startat = chkpoint["epoch"] + 1
 
-    criterion = torch.nn.BCELoss().to(rank)
+    criterion = torch.nn.BCEWithLogitsLoss().to(rank)
 
     dataset = BatchedZarrData(train_path, batch_size)
     sampler = DistributedSampler(
@@ -272,14 +281,17 @@ def dist_train(
             X = X.to(rank, non_blocking=True)
             y = y.to(rank, non_blocking=True)
             mask = mask.to(rank, non_blocking=True)
-            outputs = ddp_model(X)
-            c = (mask.shape[3] - outputs.shape[3]) // 2
-            m = F.pad(mask, (-c, -c, -c, -c))
-            loss = criterion(outputs[m], y)
-            losses.append(loss.item())
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+
+            with autocast(use_mixed_precision):
+                outputs = ddp_model(X)
+                c = (mask.shape[3] - outputs.shape[3]) // 2
+                m = F.pad(mask, (-c, -c, -c, -c))
+                loss = criterion(outputs[m], y)
+            losses.append(loss.item())
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             if i % 100 == 0:
                 logger.info(
                     "Step %s of epoch %s, mean loss %s",
@@ -303,6 +315,7 @@ def dist_train(
                 "epoch": epoch,
                 "model_state_dict": ddp_model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "scaler_state_dict": scaler.state_dict(),
                 "train_loss": train_loss,
                 "duration": dur,
                 "validation_loss": val_loss,
@@ -324,6 +337,7 @@ def train(
     load_from,
     epochs,
     adj_for_cloud,
+    use_mixed_precision,
 ):
     if rank != 0:
         list(
@@ -337,6 +351,7 @@ def train(
                 load_from,
                 epochs,
                 adj_for_cloud,
+                use_mixed_precision,
             )
         )
     else:
@@ -352,6 +367,7 @@ def train(
                 load_from,
                 epochs,
                 adj_for_cloud,
+                use_mixed_precision,
             ):
                 mlflow.log_metric(
                     key="train_loss",
