@@ -34,7 +34,13 @@ logger = logging.getLogger(__name__)
 
 class BatchedZarrData(Dataset):
     def __init__(
-        self, dataset, batch_size, dtype=torch.float32, adjusted=0, logger=logger,
+        self,
+        dataset,
+        batch_size,
+        dtype=torch.float32,
+        adjusted=0,
+        logger=logger,
+        load_entire_dataset=False,
     ):
         super().__init__()
         self.logger = logger
@@ -45,9 +51,9 @@ class BatchedZarrData(Dataset):
             "solar_zenith",
             "solar_azimuth",
         ]
-        self.setup(dataset)
+        self.setup(dataset, load_entire_dataset)
 
-    def setup(self, dataset):
+    def setup(self, dataset, load_entire_dataset):
         dp = Path(dataset)
         paths = sorted(
             list(dp.parent.glob(str(dp.name) + "*")),
@@ -55,6 +61,8 @@ class BatchedZarrData(Dataset):
         )
         datasets = [xr.open_zarr(str(p)) for p in paths]
         self.dataset = xr.concat(datasets, dim="rec")
+        if load_entire_dataset:
+            self.dataset = self.dataset.load()
 
     def __len__(self):
         return math.ceil(self.dataset.dims["rec"] / self.batch_size)
@@ -215,6 +223,7 @@ def dist_train(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
+    load_entire_dataset,
 ):
     logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
@@ -245,7 +254,12 @@ def dist_train(
 
     criterion = torch.nn.BCEWithLogitsLoss().to(rank)
 
-    dataset = BatchedZarrData(train_path, batch_size, adjusted=adj_for_cloud)
+    dataset = BatchedZarrData(
+        train_path,
+        batch_size,
+        adjusted=adj_for_cloud,
+        load_entire_dataset=load_entire_dataset,
+    )
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
     )
@@ -258,7 +272,12 @@ def dist_train(
         pin_memory=True,
     )
 
-    val_dataset = BatchedZarrData(val_path, batch_size, adjusted=adj_for_cloud)
+    val_dataset = BatchedZarrData(
+        val_path,
+        batch_size,
+        adjusted=adj_for_cloud,
+        load_entire_dataset=load_entire_dataset,
+    )
     val_sampler = DistributedSampler(
         val_dataset, num_replicas=world_size, rank=rank, shuffle=False
     )
@@ -338,6 +357,7 @@ def train(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
+    load_entire_dataset,
 ):
     if rank != 0:
         list(
@@ -352,6 +372,7 @@ def train(
                 epochs,
                 adj_for_cloud,
                 use_mixed_precision,
+                load_entire_dataset,
             )
         )
     else:
@@ -368,6 +389,7 @@ def train(
                 epochs,
                 adj_for_cloud,
                 use_mixed_precision,
+                load_entire_dataset,
             ):
                 mlflow.log_metric(
                     key="train_loss",
