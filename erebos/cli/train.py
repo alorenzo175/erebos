@@ -347,14 +347,7 @@ def cloud_mask(
 @click.option("--adj-for-cloud", is_flag=True)
 @click.option("--use-mixed-precision", is_flag=True)
 @click.option(
-    "--mem-limit",
-    help="memory limit of the training dataset to preload in GB",
-    type=int,
-    default=0,
-)
-@click.option(
-    "--val-mem-limit",
-    help="memory limit of the validation dataset to preload in GB",
+    "--loader-workers"
     type=int,
     default=0,
 )
@@ -373,8 +366,7 @@ def cloud_mask_cnn(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
-    mem_limit,
-    val_mem_limit,
+        loader_workers
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
@@ -407,6 +399,5 @@ def cloud_mask_cnn(
         epochs,
         int(adj_for_cloud),
         use_mixed_precision,
-        mem_limit * 1024 ** 3,
-        val_mem_limit * 1024 ** 3,
+        loader_workers
     )

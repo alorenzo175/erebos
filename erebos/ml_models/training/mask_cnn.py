@@ -34,13 +34,7 @@ logger = logging.getLogger(__name__)
 
 class BatchedZarrData(Dataset):
     def __init__(
-        self,
-        dataset,
-        batch_size,
-        dtype=torch.float32,
-        adjusted=0,
-        logger=logger,
-        mem_limit=0,
+        self, dataset, batch_size, dtype=torch.float32, adjusted=0, logger=logger,
     ):
         super().__init__()
         self.logger = logger
@@ -51,9 +45,6 @@ class BatchedZarrData(Dataset):
             "solar_zenith",
             "solar_azimuth",
         ]
-        self.all_vars = self.vars_.copy() + ["label_mask", "cloud_layers"]
-        self.mem_limit = mem_limit
-        self.tempkeys = []
         self.setup(dataset)
 
     def setup(self, dataset):
@@ -64,30 +55,15 @@ class BatchedZarrData(Dataset):
         )
         datasets = [xr.open_zarr(str(p)) for p in paths]
         self.dataset = xr.concat(datasets, dim="rec")
-        self.bytes_per_key = (
-            self.dataset[self.all_vars].isel(rec=slice(0, self.batch_size)).nbytes
-        )
 
     def __len__(self):
         return math.ceil(self.dataset.dims["rec"] / self.batch_size)
 
-    def load_data(self, key):
-        if key not in self.tempkeys:
-            num_slices = max(self.mem_limit // self.bytes_per_key, 1)
-            large_slice = slice(
-                key * self.batch_size, (key + num_slices) * self.batch_size
-            )
-            self.tempkeys = range(key, key + num_slices, 1)
-            self.tempdata = self.dataset.sel(rec=large_slice)[self.all_vars].load()
-
-        sl = slice(key * self.batch_size, (key + 1) * self.batch_size)
-        return self.tempdata.sel(rec=sl)
-
     def __getitem__(self, key):
         if key >= len(self):
             raise KeyError(f"{key} out of range")
-
-        dsl = self.load_data(key)
+        sl = slice(key * self.batch_size, (key + 1) * self.batch_size)
+        dsl = self.dataset.sel(rec=sl)
         X = torch.tensor(
             dsl[self.vars_]
             .to_array()
@@ -237,8 +213,7 @@ def dist_train(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
-    mem_limit,
-    val_mem_limit,
+    loader_workers,
 ):
     logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
@@ -269,24 +244,20 @@ def dist_train(
 
     criterion = torch.nn.BCEWithLogitsLoss().to(rank)
 
-    dataset = BatchedZarrData(
-        train_path, batch_size, adjusted=adj_for_cloud, mem_limit=mem_limit,
-    )
+    dataset = BatchedZarrData(train_path, batch_size, adjusted=adj_for_cloud)
     sampler = DistributedSampler(
-        dataset, num_replicas=world_size, rank=rank, shuffle=False,
+        dataset, num_replicas=world_size, rank=rank, shuffle=True,
     )
     loader = DataLoader(
         dataset,
         batch_size=None,
         shuffle=False,
-        num_workers=0,
+        num_workers=loader_workers,
         sampler=sampler,
         pin_memory=True,
     )
 
-    val_dataset = BatchedZarrData(
-        val_path, batch_size, adjusted=adj_for_cloud, mem_limit=val_mem_limit
-    )
+    val_dataset = BatchedZarrData(val_path, batch_size, adjusted=adj_for_cloud)
     val_sampler = DistributedSampler(
         val_dataset, num_replicas=world_size, rank=rank, shuffle=False
     )
@@ -294,7 +265,7 @@ def dist_train(
         val_dataset,
         batch_size=None,
         shuffle=False,
-        num_workers=0,
+        num_workers=loader_workers,
         sampler=val_sampler,
         pin_memory=True,
     )
@@ -366,8 +337,7 @@ def train(
     epochs,
     adj_for_cloud,
     use_mixed_precision,
-    mem_limit,
-    val_mem_limit,
+    loader_workers,
 ):
     if rank != 0:
         list(
@@ -382,8 +352,7 @@ def train(
                 epochs,
                 adj_for_cloud,
                 use_mixed_precision,
-                mem_limit,
-                val_mem_limit,
+                loader_workers,
             )
         )
     else:
@@ -400,8 +369,7 @@ def train(
                 epochs,
                 adj_for_cloud,
                 use_mixed_precision,
-                mem_limit,
-                val_mem_limit,
+                loader_workers,
             ):
                 mlflow.log_metric(
                     key="train_loss",
