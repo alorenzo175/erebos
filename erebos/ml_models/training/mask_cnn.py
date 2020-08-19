@@ -168,14 +168,14 @@ class UNet(nn.Module):
         return out
 
 
-def setup(rank, world_size, backend):
+def setup(rank, world_size, backend, log_level):
     dist.init_process_group(backend, rank=rank, world_size=world_size)
     logger = logging.getLogger()
-    formatter = logging.Formatter("%(asctime)s %(message)s")
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     handler.setLevel("DEBUG")
-    logger.setLevel("INFO")
+    logger.setLevel(log_level)
     logger.handlers = []
     logger.addHandler(handler)
     return logger
@@ -225,8 +225,9 @@ def dist_train(
     use_mixed_precision,
     loader_workers,
     cpu,
+    log_level,
 ):
-    logger = setup(rank, world_size, backend)
+    logger = setup(rank, world_size, backend, log_level)
     logger.info("Training on rank %s", rank)
 
     params = {
@@ -349,61 +350,21 @@ def dist_train(
                 "duration": dur,
                 "validation_loss": val_loss.item(),
             }
-            yield checkpoint_dict
+            yield checkpoint_dict, model
         else:
             yield
     cleanup()
 
 
-def train(
-    rank,
-    world_size,
-    backend,
-    train_path,
-    val_path,
-    batch_size,
-    run_name,
-    load_from,
-    epochs,
-    adj_for_cloud,
-    use_mixed_precision,
-    loader_workers,
-    cpu,
-):
+def train(run_name, *args, **kwargs):
+    rank = kwargs["rank"]
     if rank != 0:
-        list(
-            dist_train(
-                rank,
-                world_size,
-                backend,
-                train_path,
-                val_path,
-                batch_size,
-                load_from,
-                epochs,
-                adj_for_cloud,
-                use_mixed_precision,
-                loader_workers,
-                cpu,
-            )
-        )
+        list(dist_train(*args, **kwargs))
     else:
         with mlflow.start_run(run_name=run_name):
             mlflow.set_tag("mlflow.source.git.commit", git_commit)
-            for chkpoint in dist_train(
-                rank,
-                world_size,
-                backend,
-                train_path,
-                val_path,
-                batch_size,
-                load_from,
-                epochs,
-                adj_for_cloud,
-                use_mixed_precision,
-                loader_workers,
-                cpu,
-            ):
+            model_logged = False
+            for chkpoint, model in dist_train(*args, **kwargs):
                 mlflow.log_metric(
                     key="train_loss",
                     value=chkpoint["train_loss"],
@@ -420,6 +381,12 @@ def train(
                     step=chkpoint["epoch"],
                 )
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    tfile = Path(tmpdir) / "cloud_mask_unet.chk"
+                    tfile = Path(tmpdir) / f"cloud_mask_unet.chk.{chkpoint['epoch']}"
                     torch.save(chkpoint, tfile)
                     mlflow.log_artifact(str(tfile))
+                if not model_logged:
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        tfile = Path(tmpdir) / f"cloud_mask_model.pth"
+                        torch.save(model, tfile)
+                        mlflow.log_artifact(str(tfile))
+                    model_logged = True

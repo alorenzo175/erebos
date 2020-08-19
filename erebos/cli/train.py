@@ -320,7 +320,6 @@ def cloud_mask(
 
 @train.command()
 @verbose
-@set_log_level
 @mlflow_options
 @click.argument("experiment_name")
 @click.argument("rank", type=int)
@@ -334,14 +333,18 @@ def cloud_mask(
 )
 @click.option("--master-port", envvar="MASTER_PORT", show_envvar=True, type=str)
 @click.option(
-    "--train-file",
+    "--train-path",
     type=PathParamType(resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/train.zarr",
+    envvar="TRAIN_PATH",
+    show_envvar=True,
 )
 @click.option(
-    "--validate-file",
+    "--validate-path",
     type=PathParamType(resolve_path=True),
     default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
+    envvar="VALIDATE_PATH",
+    show_envvar=True,
 )
 @click.option("--cpu", is_flag=True)
 @click.option("--epochs", type=int, default=500)
@@ -353,8 +356,8 @@ def cloud_mask(
 def cloud_mask_cnn(
     experiment_name,
     run_name,
-    train_file,
-    validate_file,
+    train_path,
+    validate_path,
     batch_size,
     rank,
     world_size,
@@ -367,6 +370,7 @@ def cloud_mask_cnn(
     use_mixed_precision,
     loader_workers,
     cpu,
+    verbose,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
@@ -387,18 +391,20 @@ def cloud_mask_cnn(
         load_from = client.download_artifacts(load_from_run, "cloud_mask_unet.chk")
     else:
         load_from = None
+
     training.mask_cnn.train(
-        rank,
-        world_size,
-        backend,
-        str(train_file),
-        str(validate_file),
-        batch_size,
         run_name,
-        load_from,
-        epochs,
-        int(adj_for_cloud),
-        use_mixed_precision,
-        loader_workers,
-        cpu,
+        rank=rank,
+        world_size=world_size,
+        backend=backend,
+        train_path=str(train_path),
+        val_path=str(validate_path),
+        batch_size=batch_size,
+        load_from=load_from,
+        epochs=epochs,
+        adj_for_cloud=int(adj_for_cloud),
+        use_mixed_precision=use_mixed_precision,
+        loader_workers=loader_workers,
+        cpu=cpu,
+        log_level="DEBUG" if verbose > 1 else "INFO",
     )
