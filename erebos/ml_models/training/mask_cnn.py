@@ -233,6 +233,7 @@ def dist_train(
         "initial_learning_rate": 0.01,
         "optimizer": "adam",
         "loss": "bce",
+        "loaded_from_run": load_from,
     }
     model = UNet(18, 1, 0)
     if cpu:
