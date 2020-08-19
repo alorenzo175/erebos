@@ -186,7 +186,8 @@ def cleanup():
 
 
 def validate(device, validation_loader, model, loss_function):
-    losses = []
+    out = None
+    count = None
     model.eval()
     with torch.no_grad():
         for i, (X, mask, y) in enumerate(validation_loader):
@@ -197,9 +198,14 @@ def validate(device, validation_loader, model, loss_function):
             c = (mask.shape[3] - outputs.shape[3]) // 2
             m = F.pad(mask, (-c, -c, -c, -c))
             loss = loss_function(outputs[m], y)
-            losses.append(loss.item())
+            if out is None:
+                out = torch.tensor(loss.item() * X.shape[0])
+                count = torch.tensor(X.shape[0])
+            else:
+                out += loss.item() * X.shape[0]
+                count += X.shape[0]
     model.train()
-    return np.array(losses).mean()
+    return out, count
 
 
 def dist_train(
@@ -248,7 +254,7 @@ def dist_train(
         startat = chkpoint["epoch"] + 1
 
     criterion = torch.nn.BCEWithLogitsLoss().to(rank)
-
+    rank = 0
     dataset = BatchedZarrData(train_path, batch_size, adjusted=adj_for_cloud)
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True,
@@ -278,7 +284,7 @@ def dist_train(
     for epoch in range(startat, epochs):
         logger.info("Begin training of epoch %s", epoch)
         sampler.set_epoch(epoch)
-        losses = []
+        train_sum = None
         a = time.time()
         for i, (X, mask, y) in enumerate(loader):
             logger.debug("On step %s of epoch %s with %s recs", i, epoch, X.shape[0])
@@ -292,7 +298,12 @@ def dist_train(
                 c = (mask.shape[3] - outputs.shape[3]) // 2
                 m = F.pad(mask, (-c, -c, -c, -c))
                 loss = criterion(outputs[m], y)
-            losses.append(loss.item())
+            if train_sum is None:
+                train_sum = torch.tensor(loss.item() * X.shape[0])
+                train_count = torch.tensor(X.shape[0])
+            else:
+                train_sum += loss.item() * X.shape[0]
+                train_count += X.shape[0]
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -301,29 +312,38 @@ def dist_train(
                     "Step %s of epoch %s, mean loss %s",
                     i,
                     epoch,
-                    np.array(losses).mean(),
+                    (train_sum / train_count).item(),
                 )
-
-        dur = time.time() - a
-        val_loss = validate(rank, validation_loader, ddp_model, criterion)
+        val_sum, val_count = validate(rank, validation_loader, ddp_model, criterion)
+        dist.barrier()
+        dist.all_reduce(val_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(val_count, op=dist.ReduceOp.SUM)
+        val_loss = val_sum / val_count
+        logger.info("val loss %s", val_loss.item())
         scheduler.step(val_loss)
-        train_loss = np.array(losses).mean()
-        logger.info(
-            "Epoch %s in %s completed with average loss %s and validation loss %s",
-            epoch,
-            dur,
-            train_loss,
-            val_loss,
-        )
+        dur = time.time() - a
         if rank == 0:
+            dist.all_reduce(train_sum, op=dist.ReduceOp.SUM)
+            dist.all_reduce(train_count, op=dist.ReduceOp.SUM)
+            train_loss = train_sum / train_count
+            logger.info(
+                "Epoch %s in %s completed with average loss %s and validation loss %s",
+                epoch,
+                dur,
+                train_loss.item(),
+                val_loss.item(),
+            )
+            learning_rate = optimizer.param_groups[0]["lr"]
+            logger.info("Latest learning rate is %s", learning_rate)
             checkpoint_dict = {
                 "epoch": epoch,
                 "model_state_dict": ddp_model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "scaler_state_dict": scaler.state_dict(),
-                "train_loss": train_loss,
+                "learning_rate": learning_rate,
+                "train_loss": train_loss.item(),
                 "duration": dur,
-                "validation_loss": val_loss,
+                "validation_loss": val_loss.item(),
             }
             yield checkpoint_dict
         else:
@@ -385,6 +405,11 @@ def train(
                 mlflow.log_metric(
                     key="validation_loss",
                     value=chkpoint["validation_loss"],
+                    step=chkpoint["epoch"],
+                )
+                mlflow.log_metric(
+                    key="learning_rate",
+                    value=chkpoint["learning_rate"],
                     step=chkpoint["epoch"],
                 )
                 with tempfile.TemporaryDirectory() as tmpdir:
