@@ -206,7 +206,10 @@ def validate(device, validation_loader, model, loss_function):
                 out += loss.item() * sy.shape[0]
                 count += sy.shape[0]
     model.train()
-    return out, count
+    dist.barrier()
+    dist.all_reduce(out, op=dist.ReduceOp.SUM)
+    dist.all_reduce(count, op=dist.ReduceOp.SUM)
+    return out / count
 
 
 def dist_train(
@@ -226,9 +229,8 @@ def dist_train(
     logger.info("Training on rank %s", rank)
 
     params = {
-        "initial_learning_rate": 0.1,
-        "momentum": 0.9,
-        "optimizer": "sgd",
+        "initial_learning_rate": 0.01,
+        "optimizer": "adam",
         "loss": "bce",
     }
     if rank == 0:
@@ -237,12 +239,7 @@ def dist_train(
     model = UNet(18, 1, 0)
     ddp_model = DDP(model.to(rank), device_ids=[rank])
     scaler = GradScaler(enabled=use_mixed_precision)
-    optimizer = optim.SGD(
-        ddp_model.parameters(),
-        lr=params["initial_learning_rate"],
-        momentum=params["momentum"],
-    )
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
+    optimizer = optim.Adam(ddp_model.parameters(), lr=params["initial_learning_rate"],)
     startat = 0
     if load_from is not None:
         map_location = {"cuda:0": f"cuda:{rank:d}"}
@@ -313,16 +310,13 @@ def dist_train(
                     epoch,
                     (train_sum / train_count).item(),
                 )
-        val_sum, val_count = validate(rank, validation_loader, ddp_model, criterion)
-        dist.barrier()
-        dist.all_reduce(val_sum, op=dist.ReduceOp.SUM)
-        dist.all_reduce(val_count, op=dist.ReduceOp.SUM)
-        val_loss = val_sum / val_count
+
+        val_loss = validate(rank, validation_loader, ddp_model, criterion)
         logger.info("val loss %s", val_loss.item())
-        scheduler.step(val_loss)
         dur = time.time() - a
         learning_rate = optimizer.param_groups[0]["lr"]
         logger.info("Latest learning rate is %s", learning_rate)
+        dist.barrier()
         dist.all_reduce(train_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(train_count, op=dist.ReduceOp.SUM)
         train_loss = train_sum / train_count
