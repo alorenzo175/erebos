@@ -82,8 +82,7 @@ class BatchedZarrData(Dataset):
             | ~mask.any(3).any(2).any(1)
         )
         s += records
-        if nanrecs.sum().item() != records:
-            yield X[~nanrecs], mask[~nanrecs], y[~nanrecs]
+        yield X[~nanrecs], mask[~nanrecs], y[~nanrecs]
 
 
 class UNet(nn.Module):
