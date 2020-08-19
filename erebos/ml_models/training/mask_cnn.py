@@ -321,17 +321,17 @@ def dist_train(
         dur = time.time() - a
         learning_rate = optimizer.param_groups[0]["lr"]
         logger.info("Latest learning rate is %s", learning_rate)
+        dist.all_reduce(train_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(train_count, op=dist.ReduceOp.SUM)
+        train_loss = train_sum / train_count
+        logger.info(
+            "Epoch %s in %s completed with average loss %s and validation loss %s",
+            epoch,
+            dur,
+            train_loss.item(),
+            val_loss.item(),
+        )
         if rank == 0:
-            dist.all_reduce(train_sum, op=dist.ReduceOp.SUM)
-            dist.all_reduce(train_count, op=dist.ReduceOp.SUM)
-            train_loss = train_sum / train_count
-            logger.info(
-                "Epoch %s in %s completed with average loss %s and validation loss %s",
-                epoch,
-                dur,
-                train_loss.item(),
-                val_loss.item(),
-            )
             checkpoint_dict = {
                 "epoch": epoch,
                 "model_state_dict": ddp_model.state_dict(),
