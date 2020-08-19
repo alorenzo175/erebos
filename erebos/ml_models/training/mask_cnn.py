@@ -197,7 +197,7 @@ def validate(device, validation_loader, model, loss_function):
             outputs = model(X)
             c = (mask.shape[3] - outputs.shape[3]) // 2
             m = F.pad(mask, (-c, -c, -c, -c))
-            sy = y[mask.any(3).any(2).any(1)]
+            sy = y[m.any(3).any(2).any(1)]
             loss = loss_function(outputs[m], sy)
             if out is None:
                 out = torch.tensor(loss.item() * sy.shape[0]).to(device)
@@ -295,7 +295,7 @@ def dist_train(
                 outputs = ddp_model(X)
                 c = (mask.shape[3] - outputs.shape[3]) // 2
                 m = F.pad(mask, (-c, -c, -c, -c))
-                sy = y[mask.any(3).any(2).any(1)]
+                sy = y[m.any(3).any(2).any(1)]
                 loss = criterion(outputs[m], sy)
             if train_sum is None:
                 train_sum = torch.tensor(loss.item() * sy.shape[0]).to(rank)
