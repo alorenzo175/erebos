@@ -312,6 +312,7 @@ def dist_train(
                     (train_sum / train_count).item(),
                 )
         val_sum, val_count = validate(rank, validation_loader, ddp_model, criterion)
+        dist.barrier()
         dist.all_reduce(val_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(val_count, op=dist.ReduceOp.SUM)
         val_loss = val_sum / val_count
