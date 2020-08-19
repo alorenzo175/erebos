@@ -224,6 +224,7 @@ def dist_train(
     adj_for_cloud,
     use_mixed_precision,
     loader_workers,
+    cpu,
 ):
     logger = setup(rank, world_size, backend)
     logger.info("Training on rank %s", rank)
@@ -233,23 +234,32 @@ def dist_train(
         "optimizer": "adam",
         "loss": "bce",
     }
+    model = UNet(18, 1, 0)
+    if cpu:
+        device = torch.device("cpu")
+        ddp_model = DDP(model)
+    else:
+        torch.cuda.set_device(rank)
+        device = torch.device(rank)
+        ddp_model = DDP(model.to(device), device_ids=[device])
+
     if rank == 0:
         mlflow.log_params(params)
-    torch.cuda.set_device(rank)
-    model = UNet(18, 1, 0)
-    ddp_model = DDP(model.to(rank), device_ids=[rank])
     scaler = GradScaler(enabled=use_mixed_precision)
     optimizer = optim.Adam(ddp_model.parameters(), lr=params["initial_learning_rate"],)
     startat = 0
     if load_from is not None:
-        map_location = {"cuda:0": f"cuda:{rank:d}"}
+        if cpu:
+            map_location = {"cuda:0": "cpu"}
+        else:
+            map_location = {"cuda:0": f"cuda:{rank:d}"}
         chkpoint = torch.load(load_from, map_location=map_location)
         ddp_model.load_state_dict(chkpoint["model_state_dict"])
         optimizer.load_state_dict(chkpoint["optimizer_state_dict"])
         scaler.load_state_dict(chkpoint["scaler_state_dict"])
         startat = chkpoint["epoch"] + 1
 
-    criterion = torch.nn.BCEWithLogitsLoss().to(rank)
+    criterion = torch.nn.BCEWithLogitsLoss().to(device)
     dataset = BatchedZarrData(train_path, batch_size, adjusted=adj_for_cloud)
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True,
@@ -283,9 +293,9 @@ def dist_train(
         a = time.time()
         for i, (X, mask, y) in enumerate(loader):
             logger.debug("On step %s of epoch %s with %s recs", i, epoch, X.shape[0])
-            X = X.to(rank, non_blocking=True)
-            y = y.to(rank, non_blocking=True)
-            mask = mask.to(rank, non_blocking=True)
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            mask = mask.to(device, non_blocking=True)
             optimizer.zero_grad()
 
             with autocast(use_mixed_precision):
@@ -295,8 +305,8 @@ def dist_train(
                 sy = y[m.any(3).any(2).any(1)]
                 loss = criterion(outputs[m], sy)
             if train_sum is None:
-                train_sum = torch.tensor(loss.item() * sy.shape[0]).to(rank)
-                train_count = torch.tensor(sy.shape[0]).to(rank)
+                train_sum = torch.tensor(loss.item() * sy.shape[0]).to(device)
+                train_count = torch.tensor(sy.shape[0]).to(device)
             else:
                 train_sum += loss.item() * sy.shape[0]
                 train_count += sy.shape[0]
@@ -311,7 +321,7 @@ def dist_train(
                     (train_sum / train_count).item(),
                 )
 
-        val_loss = validate(rank, validation_loader, ddp_model, criterion)
+        val_loss = validate(device, validation_loader, ddp_model, criterion)
         logger.info("val loss %s", val_loss.item())
         dur = time.time() - a
         learning_rate = optimizer.param_groups[0]["lr"]
@@ -357,6 +367,7 @@ def train(
     adj_for_cloud,
     use_mixed_precision,
     loader_workers,
+    cpu,
 ):
     if rank != 0:
         list(
@@ -372,6 +383,7 @@ def train(
                 adj_for_cloud,
                 use_mixed_precision,
                 loader_workers,
+                cpu,
             )
         )
     else:
@@ -389,6 +401,7 @@ def train(
                 adj_for_cloud,
                 use_mixed_precision,
                 loader_workers,
+                cpu,
             ):
                 mlflow.log_metric(
                     key="train_loss",
