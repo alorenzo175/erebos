@@ -76,12 +76,7 @@ class BatchedZarrData(Dataset):
             dtype=torch.bool,
         )
         y = torch.tensor((dsl.cloud_layers != 0).values, dtype=self.dtype,)
-        nanrecs = (
-            torch.isnan(X).any(3).any(2).any(1)
-            | torch.isnan(y)
-            | ~mask.any(3).any(2).any(1)
-        )
-        return X[~nanrecs], mask[~nanrecs], y[~nanrecs]
+        return X, mask, y
 
 
 class UNet(nn.Module):
@@ -202,13 +197,14 @@ def validate(device, validation_loader, model, loss_function):
             outputs = model(X)
             c = (mask.shape[3] - outputs.shape[3]) // 2
             m = F.pad(mask, (-c, -c, -c, -c))
-            loss = loss_function(outputs[m], y)
+            somem = m[mask.any(3).any(2).any(1)]
+            loss = loss_function(outputs[somem], y)
             if out is None:
-                out = torch.tensor(loss.item() * X.shape[0]).to(device)
-                count = torch.tensor(X.shape[0]).to(device)
+                out = torch.tensor(loss.item() * somem.shape[0]).to(device)
+                count = torch.tensor(somem.shape[0]).to(device)
             else:
-                out += loss.item() * X.shape[0]
-                count += X.shape[0]
+                out += loss.item() * somem.shape[0]
+                count += somem.shape[0]
     model.train()
     return out, count
 
@@ -299,12 +295,13 @@ def dist_train(
                 outputs = ddp_model(X)
                 c = (mask.shape[3] - outputs.shape[3]) // 2
                 m = F.pad(mask, (-c, -c, -c, -c))
-                loss = criterion(outputs[m], y)
+                somem = m[mask.any(3).any(2).any(1)]
+                loss = criterion(outputs[somemm], y)
             if train_sum is None:
-                train_sum = torch.tensor(loss.item() * X.shape[0]).to(rank)
-                train_count = torch.tensor(X.shape[0]).to(rank)
+                train_sum = torch.tensor(loss.item() * somem.shape[0]).to(rank)
+                train_count = torch.tensor(somem.shape[0]).to(rank)
             else:
-                train_sum += loss.item() * X.shape[0]
+                train_sum += loss.item() * somem.shape[0]
                 train_count += X.shape[0]
             scaler.scale(loss).backward()
             scaler.step(optimizer)
