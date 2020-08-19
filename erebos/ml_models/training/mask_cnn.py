@@ -81,7 +81,6 @@ class BatchedZarrData(Dataset):
             | torch.isnan(y)
             | ~mask.any(3).any(2).any(1)
         )
-        s += records
         yield X[~nanrecs], mask[~nanrecs], y[~nanrecs]
 
 
