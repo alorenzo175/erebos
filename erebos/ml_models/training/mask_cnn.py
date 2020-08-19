@@ -81,7 +81,7 @@ class BatchedZarrData(Dataset):
             | torch.isnan(y)
             | ~mask.any(3).any(2).any(1)
         )
-        yield X[~nanrecs], mask[~nanrecs], y[~nanrecs]
+        return X[~nanrecs], mask[~nanrecs], y[~nanrecs]
 
 
 class UNet(nn.Module):
