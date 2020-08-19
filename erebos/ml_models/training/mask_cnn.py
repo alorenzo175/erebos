@@ -252,7 +252,6 @@ def dist_train(
         startat = chkpoint["epoch"] + 1
 
     criterion = torch.nn.BCEWithLogitsLoss().to(rank)
-    rank = 0
     dataset = BatchedZarrData(train_path, batch_size, adjusted=adj_for_cloud)
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True,
@@ -313,7 +312,6 @@ def dist_train(
                     (train_sum / train_count).item(),
                 )
         val_sum, val_count = validate(rank, validation_loader, ddp_model, criterion)
-        dist.barrier()
         dist.all_reduce(val_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(val_count, op=dist.ReduceOp.SUM)
         val_loss = val_sum / val_count
