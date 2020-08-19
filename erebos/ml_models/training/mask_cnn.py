@@ -199,8 +199,8 @@ def validate(device, validation_loader, model, loss_function):
             m = F.pad(mask, (-c, -c, -c, -c))
             loss = loss_function(outputs[m], y)
             if out is None:
-                out = torch.tensor(loss.item() * X.shape[0])
-                count = torch.tensor(X.shape[0])
+                out = torch.tensor(loss.item() * X.shape[0]).to(device)
+                count = torch.tensor(X.shape[0]).to(device)
             else:
                 out += loss.item() * X.shape[0]
                 count += X.shape[0]
@@ -296,8 +296,8 @@ def dist_train(
                 m = F.pad(mask, (-c, -c, -c, -c))
                 loss = criterion(outputs[m], y)
             if train_sum is None:
-                train_sum = torch.tensor(loss.item() * X.shape[0])
-                train_count = torch.tensor(X.shape[0])
+                train_sum = torch.tensor(loss.item() * X.shape[0]).to(rank)
+                train_count = torch.tensor(X.shape[0]).to(rank)
             else:
                 train_sum += loss.item() * X.shape[0]
                 train_count += X.shape[0]
