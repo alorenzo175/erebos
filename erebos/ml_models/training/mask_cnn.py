@@ -296,7 +296,7 @@ def dist_train(
                 c = (mask.shape[3] - outputs.shape[3]) // 2
                 m = F.pad(mask, (-c, -c, -c, -c))
                 somem = m[mask.any(3).any(2).any(1)]
-                loss = criterion(outputs[somemm], y)
+                loss = criterion(outputs[somem], y)
             if train_sum is None:
                 train_sum = torch.tensor(loss.item() * somem.shape[0]).to(rank)
                 train_count = torch.tensor(somem.shape[0]).to(rank)
