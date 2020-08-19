@@ -237,12 +237,13 @@ def dist_train(
     cpu,
     log_level,
     use_max_pool,
+    learning_rate,
 ):
     logger = setup(rank, world_size, backend, log_level)
     logger.info("Training on rank %s", rank)
 
     params = {
-        "initial_learning_rate": 0.01,
+        "initial_learning_rate": learning_rate,
         "optimizer": "adam",
         "loss": "bce",
         "loaded_from_run": load_from,
