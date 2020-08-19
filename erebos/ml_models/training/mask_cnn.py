@@ -80,7 +80,7 @@ class BatchedZarrData(Dataset):
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, padding):
+    def __init__(self, n_channels, n_classes, padding, maxpool=True):
         super().__init__()
 
         down0_out_chan = 32
@@ -93,8 +93,12 @@ class UNet(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-
+        if maxpool:
+            self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        else:
+            self.pool1 = nn.Conv2d(
+                down0_out_chan, down0_out_chan, kernel_size=3, stride=2, padding=1
+            )
         down1_out_chan = 64
         self.down1 = nn.Sequential(
             nn.Conv2d(down0_out_chan, down1_out_chan, kernel_size=3, padding=padding),
@@ -105,8 +109,12 @@ class UNet(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-
+        if maxpool:
+            self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        else:
+            self.pool2 = nn.Conv2d(
+                down1_out_chan, down1_out_chan, kernel_size=3, stride=2, padding=1
+            )
         down2_out_chan = 128
         self.down2 = nn.Sequential(
             nn.Conv2d(down1_out_chan, down2_out_chan, kernel_size=3, padding=padding),
@@ -155,8 +163,10 @@ class UNet(nn.Module):
 
     def forward(self, x):
         x0 = self.down0(x)
-        x1 = self.down1(self.pool1(x0))
-        x = self.down2(self.pool2(x1))
+        x0d = self.pool1(x0)
+        x1 = self.down1(x0d)
+        x1d = self.pool2(x1)
+        x = self.down2(x1d)
         x = self._up_and_conv(x, x1, self.up1, self.upconv1)
         x = self._up_and_conv(x, x0, self.up0, self.upconv0)
         out = self.out(x)
@@ -226,6 +236,7 @@ def dist_train(
     loader_workers,
     cpu,
     log_level,
+    use_max_pool,
 ):
     logger = setup(rank, world_size, backend, log_level)
     logger.info("Training on rank %s", rank)
@@ -235,8 +246,16 @@ def dist_train(
         "optimizer": "adam",
         "loss": "bce",
         "loaded_from_run": load_from,
+        "using_mixed_precision": use_mixed_precision,
+        "adj_cloud_locations": adj_for_cloud,
+        "batch_size": batch_size,
+        "train_path": train_path,
+        "validation_path": val_path,
+        "num_data_loader_workers": loader_workers,
+        "trained_on_cpu": cpu,
+        "use_max_pooling": use_max_pool,
     }
-    model = UNet(18, 1, 0)
+    model = UNet(18, 1, 0, use_max_pool)
     if cpu:
         device = torch.device("cpu")
         ddp_model = DDP(model)

@@ -349,6 +349,7 @@ def cloud_mask(
 @click.option("--cpu", is_flag=True)
 @click.option("--epochs", type=int, default=500)
 @click.option("--adj-for-cloud", is_flag=True)
+@click.option("--use-max-pool/--dont-use-max-pool", is_flag=True, default=True)
 @click.option("--use-mixed-precision", is_flag=True)
 @click.option(
     "--loader-workers", type=int, default=0,
@@ -370,6 +371,7 @@ def cloud_mask_cnn(
     use_mixed_precision,
     loader_workers,
     cpu,
+    use_max_pool,
     verbose,
 ):
     """Train a Unet CNN to predict a cloud mask"""
@@ -407,4 +409,5 @@ def cloud_mask_cnn(
         loader_workers=loader_workers,
         cpu=cpu,
         log_level="DEBUG" if verbose > 1 else "INFO",
+        use_max_pool=use_max_pool,
     )
