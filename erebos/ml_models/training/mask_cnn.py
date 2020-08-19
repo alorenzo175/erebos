@@ -197,14 +197,14 @@ def validate(device, validation_loader, model, loss_function):
             outputs = model(X)
             c = (mask.shape[3] - outputs.shape[3]) // 2
             m = F.pad(mask, (-c, -c, -c, -c))
-            somem = m[mask.any(3).any(2).any(1)]
-            loss = loss_function(outputs[somem], y)
+            sy = y[mask.any(3).any(2).any(1)]
+            loss = loss_function(outputs[m], sy)
             if out is None:
-                out = torch.tensor(loss.item() * somem.shape[0]).to(device)
-                count = torch.tensor(somem.shape[0]).to(device)
+                out = torch.tensor(loss.item() * sy.shape[0]).to(device)
+                count = torch.tensor(sy.shape[0]).to(device)
             else:
-                out += loss.item() * somem.shape[0]
-                count += somem.shape[0]
+                out += loss.item() * sy.shape[0]
+                count += sy.shape[0]
     model.train()
     return out, count
 
@@ -295,14 +295,14 @@ def dist_train(
                 outputs = ddp_model(X)
                 c = (mask.shape[3] - outputs.shape[3]) // 2
                 m = F.pad(mask, (-c, -c, -c, -c))
-                somem = m[mask.any(3).any(2).any(1)]
-                loss = criterion(outputs[somem], y)
+                sy = y[mask.any(3).any(2).any(1)]
+                loss = criterion(outputs[m], sy)
             if train_sum is None:
-                train_sum = torch.tensor(loss.item() * somem.shape[0]).to(rank)
-                train_count = torch.tensor(somem.shape[0]).to(rank)
+                train_sum = torch.tensor(loss.item() * sy.shape[0]).to(rank)
+                train_count = torch.tensor(sy.shape[0]).to(rank)
             else:
-                train_sum += loss.item() * somem.shape[0]
-                train_count += X.shape[0]
+                train_sum += loss.item() * sy.shape[0]
+                train_count += sy.shape[0]
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
