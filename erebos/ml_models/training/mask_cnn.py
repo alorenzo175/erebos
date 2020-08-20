@@ -419,6 +419,9 @@ def dist_train(
 
 
 def train(run_name, *args, **kwargs):
+    seed = kwargs.pop("seed", 97238)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
     rank = kwargs["rank"]
     if rank != 0:
         list(dist_train(*args, **kwargs))
