@@ -277,7 +277,7 @@ def dist_train(
     else:
         optimizer = optim.SGD(
             ddp_model.parameters(),
-            lr=params["intial_learning_rate"],
+            lr=params["initial_learning_rate"],
             momentum=params["momentum"],
         )
     startat = 0
