@@ -125,6 +125,34 @@ class UNet(nn.Module):
             nn.ReLU(inplace=True),
         )
 
+        if maxpool:
+            self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        else:
+            self.pool3 = nn.Conv2d(
+                down2_out_chan, down2_out_chan, kernel_size=3, stride=2, padding=1
+            )
+        down3_out_chan = 256
+        self.down3 = nn.Sequential(
+            nn.Conv2d(down2_out_chan, down3_out_chan, kernel_size=3, padding=padding),
+            nn.BatchNorm2d(down3_out_chan),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(down3_out_chan, down3_out_chan, kernel_size=3, padding=padding),
+            nn.BatchNorm2d(down3_out_chan),
+            nn.ReLU(inplace=True),
+        )
+        self.up2 = nn.ConvTranspose2d(
+            down3_out_chan, down2_out_chan, kernel_size=2, stride=2
+        )
+
+        self.upconv2 = nn.Sequential(
+            nn.Conv2d(down3_out_chan, down2_out_chan, kernel_size=3, padding=padding),
+            nn.BatchNorm2d(down2_out_chan),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(down2_out_chan, down2_out_chan, kernel_size=3, padding=padding),
+            nn.BatchNorm2d(down2_out_chan),
+            nn.ReLU(inplace=True),
+        )
+
         self.up1 = nn.ConvTranspose2d(
             down2_out_chan, down1_out_chan, kernel_size=2, stride=2
         )
@@ -166,7 +194,10 @@ class UNet(nn.Module):
         x0d = self.pool1(x0)
         x1 = self.down1(x0d)
         x1d = self.pool2(x1)
-        x = self.down2(x1d)
+        x2 = self.down2(x1d)
+        x2d = self.pool3(x2)
+        x = self.down3(x2d)
+        x = self._up_and_conv(x, x2, self.up2, self.upconv2)
         x = self._up_and_conv(x, x1, self.up1, self.upconv1)
         x = self._up_and_conv(x, x0, self.up0, self.upconv0)
         out = self.out(x)
