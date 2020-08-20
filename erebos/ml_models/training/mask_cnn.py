@@ -83,9 +83,21 @@ class UNet(nn.Module):
     def __init__(self, n_channels, n_classes, padding, maxpool=True):
         super().__init__()
 
-        down0_out_chan = 32
+        start_chan = 32
+        down0_out_chan = start_chan * 2
+        down1_out_chan = start_chan * 4
+        down2_out_chan = start_chan * 8
+        down3_out_chan = start_chan * 16
+        fin_chan = down0_out_chan + start_chan
+
+        self.inp = nn.Sequential(
+            nn.Conv2d(n_channels, start_chan, kernel_size=1),
+            nn.BatchNorm2d(start_chan),
+            nn.ReLU(inplace=True),
+        )
+
         self.down0 = nn.Sequential(
-            nn.Conv2d(n_channels, down0_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(start_chan, down0_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
             nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=padding),
@@ -99,7 +111,6 @@ class UNet(nn.Module):
             self.pool1 = nn.Conv2d(
                 down0_out_chan, down0_out_chan, kernel_size=3, stride=2, padding=1
             )
-        down1_out_chan = 64
         self.down1 = nn.Sequential(
             nn.Conv2d(down0_out_chan, down1_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down1_out_chan),
@@ -115,7 +126,6 @@ class UNet(nn.Module):
             self.pool2 = nn.Conv2d(
                 down1_out_chan, down1_out_chan, kernel_size=3, stride=2, padding=1
             )
-        down2_out_chan = 128
         self.down2 = nn.Sequential(
             nn.Conv2d(down1_out_chan, down2_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down2_out_chan),
@@ -131,7 +141,6 @@ class UNet(nn.Module):
             self.pool3 = nn.Conv2d(
                 down2_out_chan, down2_out_chan, kernel_size=3, stride=2, padding=1
             )
-        down3_out_chan = 256
         self.down3 = nn.Sequential(
             nn.Conv2d(down2_out_chan, down3_out_chan, kernel_size=3, padding=padding),
             nn.BatchNorm2d(down3_out_chan),
@@ -180,7 +189,7 @@ class UNet(nn.Module):
         )
 
         self.out = nn.Sequential(
-            nn.Conv2d(down0_out_chan, n_classes, kernel_size=1, stride=1)
+            nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1)
         )
 
     def _up_and_conv(self, x, x_skip, up, conv):
@@ -190,7 +199,9 @@ class UNet(nn.Module):
         return conv(xc)
 
     def forward(self, x):
-        x0 = self.down0(x)
+        x = F.pad(x, (-2, -2, -2, -2))
+        xi = self.inp(x)
+        x0 = self.down0(xi)
         x0d = self.pool1(x0)
         x1 = self.down1(x0d)
         x1d = self.pool2(x1)
@@ -200,6 +211,7 @@ class UNet(nn.Module):
         x = self._up_and_conv(x, x2, self.up2, self.upconv2)
         x = self._up_and_conv(x, x1, self.up1, self.upconv1)
         x = self._up_and_conv(x, x0, self.up0, self.upconv0)
+        x = torch.cat((xi, x), dim=1)
         out = self.out(x)
         return out
 
@@ -289,7 +301,7 @@ def dist_train(
         "trained_on_cpu": cpu,
         "use_max_pooling": use_max_pool,
     }
-    model = UNet(18, 1, 0, use_max_pool)
+    model = UNet(18, 1, 1, use_max_pool)
     if cpu:
         device = torch.device("cpu")
         ddp_model = DDP(model)
