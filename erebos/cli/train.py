@@ -355,6 +355,7 @@ def cloud_mask(
     "--loader-workers", type=int, default=0,
 )
 @click.option("--learning-rate", type=float, default=1e-3)
+@click.option("--optimizer", default="adam")
 def cloud_mask_cnn(
     experiment_name,
     run_name,
@@ -375,6 +376,7 @@ def cloud_mask_cnn(
     use_max_pool,
     verbose,
     learning_rate,
+    optimizer,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
@@ -413,4 +415,5 @@ def cloud_mask_cnn(
         log_level="DEBUG" if verbose > 1 else "INFO",
         use_max_pool=use_max_pool,
         learning_rate=learning_rate,
+        use_optimizer=optimizer,
     )

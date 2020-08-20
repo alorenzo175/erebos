@@ -238,13 +238,15 @@ def dist_train(
     log_level,
     use_max_pool,
     learning_rate,
+    use_optimizer,
 ):
     logger = setup(rank, world_size, backend, log_level)
     logger.info("Training on rank %s", rank)
 
     params = {
         "initial_learning_rate": learning_rate,
-        "optimizer": "adam",
+        "momentum": 0.9,
+        "optimizer": use_optimizer,
         "loss": "bce",
         "loaded_from_run": load_from,
         "using_mixed_precision": use_mixed_precision,
@@ -268,7 +270,16 @@ def dist_train(
     if rank == 0:
         mlflow.log_params(params)
     scaler = GradScaler(enabled=use_mixed_precision)
-    optimizer = optim.Adam(ddp_model.parameters(), lr=params["initial_learning_rate"],)
+    if use_optimizer == "adam":
+        optimizer = optim.Adam(
+            ddp_model.parameters(), lr=params["initial_learning_rate"],
+        )
+    else:
+        optimizer = optim.SGD(
+            ddp_model.parameters(),
+            lr=params["intial_learning_rate"],
+            momentum=params["momentum"],
+        )
     startat = 0
     if load_from is not None:
         if cpu:
