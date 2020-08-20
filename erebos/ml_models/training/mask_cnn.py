@@ -80,7 +80,9 @@ class BatchedZarrData(Dataset):
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, padding, maxpool=True):
+    def __init__(
+        self, n_channels, n_classes, padding, maxpool=True, padding_mode="reflect"
+    ):
         super().__init__()
 
         start_chan = 32
@@ -97,10 +99,22 @@ class UNet(nn.Module):
         )
 
         self.down0 = nn.Sequential(
-            nn.Conv2d(start_chan, down0_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                start_chan,
+                down0_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down0_out_chan,
+                down0_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -112,10 +126,22 @@ class UNet(nn.Module):
                 down0_out_chan, down0_out_chan, kernel_size=3, stride=2, padding=1
             )
         self.down1 = nn.Sequential(
-            nn.Conv2d(down0_out_chan, down1_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down0_out_chan,
+                down1_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down1_out_chan, down1_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down1_out_chan,
+                down1_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -127,10 +153,22 @@ class UNet(nn.Module):
                 down1_out_chan, down1_out_chan, kernel_size=3, stride=2, padding=1
             )
         self.down2 = nn.Sequential(
-            nn.Conv2d(down1_out_chan, down2_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down1_out_chan,
+                down2_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down2_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down2_out_chan, down2_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down2_out_chan,
+                down2_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down2_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -142,10 +180,22 @@ class UNet(nn.Module):
                 down2_out_chan, down2_out_chan, kernel_size=3, stride=2, padding=1
             )
         self.down3 = nn.Sequential(
-            nn.Conv2d(down2_out_chan, down3_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down2_out_chan,
+                down3_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down3_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down3_out_chan, down3_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down3_out_chan,
+                down3_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down3_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -154,10 +204,22 @@ class UNet(nn.Module):
         )
 
         self.upconv2 = nn.Sequential(
-            nn.Conv2d(down3_out_chan, down2_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down3_out_chan,
+                down2_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down2_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down2_out_chan, down2_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down2_out_chan,
+                down2_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down2_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -167,10 +229,22 @@ class UNet(nn.Module):
         )
 
         self.upconv1 = nn.Sequential(
-            nn.Conv2d(down2_out_chan, down1_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down2_out_chan,
+                down1_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down1_out_chan, down1_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down1_out_chan,
+                down1_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down1_out_chan),
             nn.ReLU(inplace=True),
         )
@@ -180,10 +254,22 @@ class UNet(nn.Module):
         )
 
         self.upconv0 = nn.Sequential(
-            nn.Conv2d(down1_out_chan, down0_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down1_out_chan,
+                down0_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
-            nn.Conv2d(down0_out_chan, down0_out_chan, kernel_size=3, padding=padding),
+            nn.Conv2d(
+                down0_out_chan,
+                down0_out_chan,
+                kernel_size=3,
+                padding=padding,
+                padding_mode=padding_mode,
+            ),
             nn.BatchNorm2d(down0_out_chan),
             nn.ReLU(inplace=True),
         )
