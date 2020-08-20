@@ -401,7 +401,7 @@ def dist_train(
     scaler = GradScaler(enabled=use_mixed_precision)
     if use_optimizer == "adam":
         optimizer = optim.Adam(
-            ddp_model.parameters(), lr=params["initial_learning_rate"],
+            ddp_model.parameters(), lr=params["initial_learning_rate"], eps=1e-4
         )
     else:
         optimizer = optim.SGD(
