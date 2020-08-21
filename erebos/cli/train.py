@@ -357,7 +357,7 @@ def cloud_mask(
 @click.option("--learning-rate", type=float, default=1e-3)
 @click.option("--optimizer", default="adam")
 @click.option("--padding", default=0, type=int)
-@click.option("--padding-mode", default="constant")
+@click.option("--padding-mode", default="zeros")
 def cloud_mask_cnn(
     experiment_name,
     run_name,
