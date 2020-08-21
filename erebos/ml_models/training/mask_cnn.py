@@ -85,22 +85,15 @@ class UNet(nn.Module):
     ):
         super().__init__()
 
-        start_chan = 32
-        down0_out_chan = start_chan * 2
-        down1_out_chan = start_chan * 4
-        down2_out_chan = start_chan * 8
-        down3_out_chan = start_chan * 16
-        fin_chan = down0_out_chan + start_chan
-
-        self.inp = nn.Sequential(
-            nn.Conv2d(n_channels, start_chan, kernel_size=1),
-            nn.BatchNorm2d(start_chan),
-            nn.ReLU(inplace=True),
-        )
+        down0_out_chan = 32
+        down1_out_chan = down0_out_chan * 2
+        down2_out_chan = down1_out_chan * 2
+        down3_out_chan = down2_out_chan * 2
+        fin_chan = down0_out_chan
 
         self.down0 = nn.Sequential(
             nn.Conv2d(
-                start_chan,
+                n_channels,
                 down0_out_chan,
                 kernel_size=3,
                 padding=padding,
@@ -286,8 +279,7 @@ class UNet(nn.Module):
 
     def forward(self, x):
         x = F.pad(x, (-2, -2, -2, -2))
-        xi = self.inp(x)
-        x0 = self.down0(xi)
+        x0 = self.down0(x)
         x0d = self.pool1(x0)
         x1 = self.down1(x0d)
         x1d = self.pool2(x1)
@@ -297,7 +289,6 @@ class UNet(nn.Module):
         x = self._up_and_conv(x, x2, self.up2, self.upconv2)
         x = self._up_and_conv(x, x1, self.up1, self.upconv1)
         x = self._up_and_conv(x, x0, self.up0, self.upconv0)
-        x = torch.cat((xi, x), dim=1)
         out = self.out(x)
         return out
 
