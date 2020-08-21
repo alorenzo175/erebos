@@ -359,6 +359,8 @@ def dist_train(
     use_max_pool,
     learning_rate,
     use_optimizer,
+    padding,
+    padding_mode,
 ):
     logger = setup(rank, world_size, backend, log_level)
     logger.info("Training on rank %s", rank)
@@ -377,8 +379,10 @@ def dist_train(
         "num_data_loader_workers": loader_workers,
         "trained_on_cpu": cpu,
         "use_max_pooling": use_max_pool,
+        "padding": padding,
+        "padding_mode": padding_mode,
     }
-    model = UNet(18, 1, 1, use_max_pool)
+    model = UNet(18, 1, padding, use_max_pool, padding_mode=padding_mode)
     if cpu:
         device = torch.device("cpu")
         ddp_model = DDP(model)

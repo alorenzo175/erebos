@@ -356,6 +356,8 @@ def cloud_mask(
 )
 @click.option("--learning-rate", type=float, default=1e-3)
 @click.option("--optimizer", default="adam")
+@click.option("--padding", default=0, type=int)
+@click.option("--padding-mode", default="constant")
 def cloud_mask_cnn(
     experiment_name,
     run_name,
@@ -377,6 +379,8 @@ def cloud_mask_cnn(
     verbose,
     learning_rate,
     optimizer,
+    padding,
+    padding_mode,
 ):
     """Train a Unet CNN to predict a cloud mask"""
     import torch.multiprocessing as mp
@@ -416,4 +420,6 @@ def cloud_mask_cnn(
         use_max_pool=use_max_pool,
         learning_rate=learning_rate,
         use_optimizer=optimizer,
+        padding=padding,
+        padding_mode=padding_mode,
     )
