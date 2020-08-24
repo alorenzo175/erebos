@@ -79,7 +79,7 @@ class BatchedZarrData(Dataset):
         return X, mask, y
 
 
-class UNet(nn.Module):
+class MaskUNet(nn.Module):
     def __init__(
         self, n_channels, n_classes, padding, maxpool=True, padding_mode="reflect"
     ):
@@ -268,7 +268,8 @@ class UNet(nn.Module):
         )
 
         self.out = nn.Sequential(
-            nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1)
+            nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1),
+            nn.ReLU(inplace=True),
         )
 
     def _up_and_conv(self, x, x_skip, up, conv):
