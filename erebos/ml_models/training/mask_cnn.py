@@ -383,7 +383,7 @@ def dist_train(
         "padding": padding,
         "padding_mode": padding_mode,
     }
-    model = UNet(18, 1, padding, use_max_pool, padding_mode=padding_mode)
+    model = MaskUNet(18, 1, padding, use_max_pool, padding_mode=padding_mode)
     if cpu:
         device = torch.device("cpu")
         ddp_model = DDP(model)
