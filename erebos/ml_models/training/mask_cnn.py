@@ -269,7 +269,6 @@ class MaskUNet(nn.Module):
 
         self.out = nn.Sequential(
             nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1),
-            nn.ReLU(inplace=True),
         )
 
     def _up_and_conv(self, x, x_skip, up, conv):
