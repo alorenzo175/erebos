@@ -397,8 +397,9 @@ def cloud_mask_cnn(
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment(experiment_name)
     if load_from_run is not None:
+        run, epoch = load_from_run.split(":")
         client = mlflow.tracking.MlflowClient()
-        load_from = client.download_artifacts(load_from_run, "cloud_mask_unet.chk")
+        load_from = client.download_artifacts(run, f"cloud_mask_unet.chk.{epoch}")
     else:
         load_from = None
 
