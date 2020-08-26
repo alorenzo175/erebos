@@ -8,12 +8,8 @@ from .mask_cnn import MaskUNet
 
 
 class CloudHeightData(BatchedZarrData):
-    max_height = 15.0
-
     def __get_y__(self, dsl):
-        y = torch.tensor(
-            dsl.cloud_top_altitude.values / self.max_height, dtype=self.dtype
-        )
+        y = torch.tensor(dsl.cloud_top_altitude.values, dtype=self.dtype)
         y.masked_fill_(y.isnan(), 0)
         return y
 
@@ -28,6 +24,7 @@ class CloudHeightUNet(MaskUNet):
         fin_chan = 32
         self.out = nn.Sequential(
             nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1),
+            nn.Linear(n_classes, n_classes),
         )
         for parameter in self.parameters():
             parameter.requires_grad = False
