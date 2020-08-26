@@ -8,7 +8,9 @@ from .mask_cnn import MaskUNet
 
 
 class CloudHeightData(BatchedZarrData):
-    max_height = 15.0
+    def __init__(self, *args, **kwargs):
+        self.max_height = kwargs.pop("scale_y", 1.0)
+        super().__init__(*args, **kwargs)
 
     def __get_y__(self, dsl):
         y = torch.tensor(
@@ -27,6 +29,7 @@ class CloudHeightUNet(MaskUNet):
         maxpool=True,
         padding_mode="reflect",
         full_model_training=False,
+        linear_out=True,
     ):
         super().__init__(
             n_channels, 1, padding, maxpool=maxpool, padding_mode=padding_mode
@@ -40,14 +43,16 @@ class CloudHeightUNet(MaskUNet):
                 parameter.requires_grad = False
             for parameter in self.out.parameters():
                 parameter.requires_grad = True
-        self.linout = nn.Linear(n_classes, n_classes)
+        if linear_out:
+            self.linout = nn.Linear(n_classes, n_classes)
 
     def forward_prob(self, x):
         raise NotImplementedError
 
     def forward(self, x):
         x = super().forward(x)
-        x = self.linout(x.transpose(1, -1)).transpose(1, -1)
+        if hasattr(self, "linout"):
+            x = self.linout(x.transpose(1, -1)).transpose(1, -1)
         return x
 
 
@@ -79,6 +84,8 @@ def dist_train(
     use_optimizer,
     padding,
     padding_mode,
+    linear_out,
+    scale_y,
 ):
     params = {
         "initial_learning_rate": learning_rate,
@@ -99,8 +106,12 @@ def dist_train(
         "use_max_pooling": use_max_pool,
         "padding": padding,
         "padding_mode": padding_mode,
+        "use_linear_out": linear_out,
+        "scale_y": scale_y,
     }
-    dataset = CloudHeightData(train_path, batch_size, adjusted=adj_for_cloud)
+    dataset = CloudHeightData(
+        train_path, batch_size, adjusted=adj_for_cloud, scale_y=scale_y
+    )
     model = CloudHeightUNet(
         18,
         1,
@@ -108,6 +119,7 @@ def dist_train(
         use_max_pool,
         padding_mode=padding_mode,
         full_model_training=mask_model_load_from is None,
+        linear_out=linear_out,
     )
 
     if mask_model_load_from is not None:
@@ -127,7 +139,9 @@ def dist_train(
         )
         model.load_state_dict(mask_model_dict)
     loss_func = HeightLoss()
-    val_dataset = CloudHeightData(val_path, batch_size, adjusted=adj_for_cloud)
+    val_dataset = CloudHeightData(
+        val_path, batch_size, adjusted=adj_for_cloud, scale_y=scale_y
+    )
     return dist_trainer(
         rank, world_size, model, params, loss_func, dataset, val_dataset, epochs
     )

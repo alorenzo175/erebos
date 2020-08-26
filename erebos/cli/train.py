@@ -524,6 +524,8 @@ def cloud_type_cnn(
 @click.option("--use-max-pool/--dont-use-max-pool", is_flag=True, default=True)
 @click.option("--adj-for-cloud", is_flag=True)
 @click.option("--batch-size", type=int, default=600)
+@click.option("--scale-y", type=float, default=1.0)
+@click.option("--linear-out", is_flag=True)
 def cloud_height_cnn(
     experiment_name,
     run_name,
@@ -548,6 +550,8 @@ def cloud_height_cnn(
     use_max_pool,
     adj_for_cloud,
     batch_size,
+    linear_out,
+    scale_y,
 ):
     """Train a Unet CNN to predict a cloud height"""
     os.environ["MASTER_ADDR"] = master_addr
@@ -598,6 +602,8 @@ def cloud_height_cnn(
         use_optimizer=optimizer,
         padding=int(mask_params.get("padding", padding)),
         padding_mode=mask_params.get("padding_mode", padding_mode),
+        scale_y=scale_y,
+        linear_out=linear_out,
     )
 
 
