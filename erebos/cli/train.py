@@ -13,10 +13,8 @@ import optuna
 from erebos.cli.base import (
     cli,
     verbose,
-    schedule_options,
     set_log_level,
     PathParamType,
-    run_loop,
 )
 from erebos.ml_models import training
 
@@ -402,8 +400,6 @@ def cloud_mask_cnn(
     padding_mode,
 ):
     """Train a Unet CNN to predict a cloud mask"""
-    import torch.multiprocessing as mp
-
     os.environ["MASTER_ADDR"] = master_addr
     if master_port is None:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -471,8 +467,6 @@ def cloud_type_cnn(
     optimizer,
 ):
     """Train a Unet CNN to predict a cloud type"""
-    import torch.multiprocessing as mp
-
     os.environ["MASTER_ADDR"] = master_addr
     if master_port is None:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -522,7 +516,14 @@ def cloud_type_cnn(
 @verbose
 @mlflow_options
 @cnn_options
-@click.argument("mask-model-load-from")
+@click.argument("mask-model-load-from", required=False)
+@click.option(
+    "--padding", default=1, type=int, help="will probably break model when changed",
+)
+@click.option("--padding-mode", default="zeros")
+@click.option("--use-max-pool/--dont-use-max-pool", is_flag=True, default=True)
+@click.option("--adj-for-cloud", is_flag=True)
+@click.option("--batch-size", type=int, default=600)
 def cloud_height_cnn(
     experiment_name,
     run_name,
@@ -542,10 +543,13 @@ def cloud_height_cnn(
     verbose,
     learning_rate,
     optimizer,
+    padding,
+    padding_mode,
+    use_max_pool,
+    adj_for_cloud,
+    batch_size,
 ):
     """Train a Unet CNN to predict a cloud height"""
-    import torch.multiprocessing as mp
-
     os.environ["MASTER_ADDR"] = master_addr
     if master_port is None:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -557,10 +561,16 @@ def cloud_height_cnn(
 
     logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
     mlflow.set_experiment(experiment_name)
-    mrun, mepoch = mask_model_load_from.split(":")
-    client = mlflow.tracking.MlflowClient()
-    mask_load_from = client.download_artifacts(mrun, f"cloud_mask_unet.chk.{mepoch}")
-    mask_params = client.get_run(mrun).data.params
+    if mask_model_load_from is not None:
+        mrun, mepoch = mask_model_load_from.split(":")
+        client = mlflow.tracking.MlflowClient()
+        mask_load_from = client.download_artifacts(
+            mrun, f"cloud_mask_unet.chk.{mepoch}"
+        )
+        mask_params = client.get_run(mrun).data.params
+    else:
+        mask_load_from = None
+        mask_params = {}
     if load_from_run is not None:
         run, epoch = load_from_run.split(":")
         load_from = client.download_artifacts(run, f"cloud_height_unet.chk.{epoch}")
@@ -574,20 +584,20 @@ def cloud_height_cnn(
         backend=backend,
         train_path=str(train_path),
         val_path=str(validate_path),
-        batch_size=int(mask_params["batch_size"]),
+        batch_size=int(mask_params.get("batch_size", batch_size)),
         mask_model_load_from=mask_load_from,
         load_from=load_from,
         epochs=epochs,
-        adj_for_cloud=int(mask_params["adj_cloud_locations"]),
+        adj_for_cloud=int(mask_params.get("adj_cloud_locations", adj_for_cloud)),
         use_mixed_precision=use_mixed_precision,
         loader_workers=loader_workers,
         cpu=cpu,
         log_level="DEBUG" if verbose > 1 else "INFO",
-        use_max_pool=bool(mask_params["use_max_pooling"]),
+        use_max_pool=bool(mask_params.get("use_max_pooling", use_max_pool)),
         learning_rate=learning_rate,
         use_optimizer=optimizer,
-        padding=int(mask_params["padding"]),
-        padding_mode=mask_params["padding_mode"],
+        padding=int(mask_params.get("padding", padding)),
+        padding_mode=mask_params.get("padding_mode", padding_mode),
     )
 
 
@@ -617,8 +627,6 @@ def cloud_thickness_cnn(
     optimizer,
 ):
     """Train a Unet CNN to predict a cloud thickness"""
-    import torch.multiprocessing as mp
-
     os.environ["MASTER_ADDR"] = master_addr
     if master_port is None:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

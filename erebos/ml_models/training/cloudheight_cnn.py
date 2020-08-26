@@ -20,7 +20,13 @@ class CloudHeightData(BatchedZarrData):
 
 class CloudHeightUNet(MaskUNet):
     def __init__(
-        self, n_channels, n_classes, padding, maxpool=True, padding_mode="reflect"
+        self,
+        n_channels,
+        n_classes,
+        padding,
+        maxpool=True,
+        padding_mode="reflect",
+        full_model_training=False,
     ):
         super().__init__(
             n_channels, 1, padding, maxpool=maxpool, padding_mode=padding_mode
@@ -29,11 +35,15 @@ class CloudHeightUNet(MaskUNet):
         self.out = nn.Sequential(
             nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1),
         )
-        for parameter in self.parameters():
-            parameter.requires_grad = False
-        for parameter in self.out.parameters():
-            parameter.requires_grad = True
+        if not full_model_training:
+            for parameter in self.parameters():
+                parameter.requires_grad = False
+            for parameter in self.out.parameters():
+                parameter.requires_grad = True
         self.linout = nn.Linear(n_classes, n_classes)
+
+    def forward_prob(self, x):
+        raise NotImplementedError
 
     def forward(self, x):
         x = super().forward(x)
@@ -91,23 +101,31 @@ def dist_train(
         "padding_mode": padding_mode,
     }
     dataset = CloudHeightData(train_path, batch_size, adjusted=adj_for_cloud)
-    model = CloudHeightUNet(18, 1, padding, use_max_pool, padding_mode=padding_mode)
-
-    map_location = {"cuda:0": "cpu"} if cpu else {"cuda:0": f"cuda:{rank:d}"}
-    mask_model_dict = {
-        k[len("module.") :]: v
-        for k, v in torch.load(mask_model_load_from, map_location=map_location)[
-            "model_state_dict"
-        ].items()
-    }
-    mask_model_dict.update(
-        {
-            k: v
-            for k, v in model.state_dict().items()
-            if k.startswith("out") or k not in mask_model_dict
-        }
+    model = CloudHeightUNet(
+        18,
+        1,
+        padding,
+        use_max_pool,
+        padding_mode=padding_mode,
+        full_model_training=mask_model_load_from is None,
     )
-    model.load_state_dict(mask_model_dict)
+
+    if mask_model_load_from is not None:
+        map_location = {"cuda:0": "cpu"} if cpu else {"cuda:0": f"cuda:{rank:d}"}
+        mask_model_dict = {
+            k[len("module.") :]: v
+            for k, v in torch.load(mask_model_load_from, map_location=map_location)[
+                "model_state_dict"
+            ].items()
+        }
+        mask_model_dict.update(
+            {
+                k: v
+                for k, v in model.state_dict().items()
+                if k.startswith("out") or k not in mask_model_dict
+            }
+        )
+        model.load_state_dict(mask_model_dict)
     loss_func = HeightLoss()
     val_dataset = CloudHeightData(val_path, batch_size, adjusted=adj_for_cloud)
     return dist_trainer(
