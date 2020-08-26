@@ -589,3 +589,76 @@ def cloud_height_cnn(
         padding=int(mask_params["padding"]),
         padding_mode=mask_params["padding_mode"],
     )
+
+
+@train.command()
+@verbose
+@mlflow_options
+@cnn_options
+@click.argument("mask-model-load-from")
+def cloud_thickness_cnn(
+    experiment_name,
+    run_name,
+    train_path,
+    validate_path,
+    rank,
+    world_size,
+    backend,
+    mask_model_load_from,
+    load_from_run,
+    master_addr,
+    master_port,
+    epochs,
+    use_mixed_precision,
+    loader_workers,
+    cpu,
+    verbose,
+    learning_rate,
+    optimizer,
+):
+    """Train a Unet CNN to predict a cloud thickness"""
+    import torch.multiprocessing as mp
+
+    os.environ["MASTER_ADDR"] = master_addr
+    if master_port is None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        master_port = str(s.getsockname()[1])
+        s.close()
+    os.environ["MASTER_PORT"] = master_port
+
+    logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
+    mlflow.set_experiment(experiment_name)
+    mrun, mepoch = mask_model_load_from.split(":")
+    client = mlflow.tracking.MlflowClient()
+    mask_load_from = client.download_artifacts(mrun, f"cloud_mask_unet.chk.{mepoch}")
+    mask_params = client.get_run(mrun).data.params
+    if load_from_run is not None:
+        run, epoch = load_from_run.split(":")
+        load_from = client.download_artifacts(run, f"cloud_thickness_unet.chk.{epoch}")
+    else:
+        load_from = None
+
+    training.cloudthickness_cnn.train(
+        run_name,
+        rank=rank,
+        world_size=world_size,
+        backend=backend,
+        train_path=str(train_path),
+        val_path=str(validate_path),
+        batch_size=int(mask_params["batch_size"]),
+        mask_model_load_from=mask_load_from,
+        load_from=load_from,
+        epochs=epochs,
+        adj_for_cloud=int(mask_params["adj_cloud_locations"]),
+        use_mixed_precision=use_mixed_precision,
+        loader_workers=loader_workers,
+        cpu=cpu,
+        log_level="DEBUG" if verbose > 1 else "INFO",
+        use_max_pool=bool(mask_params["use_max_pooling"]),
+        learning_rate=learning_rate,
+        use_optimizer=optimizer,
+        padding=int(mask_params["padding"]),
+        padding_mode=mask_params["padding_mode"],
+    )
