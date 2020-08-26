@@ -64,7 +64,7 @@ def dist_train(
         "initial_learning_rate": learning_rate,
         "momentum": 0.9,
         "optimizer": use_optimizer,
-        "loss": "crossentropy",
+        "loss": "mse",
         "cuda_backend": backend,
         "log_level": log_level,
         "loaded_from_run": load_from,
