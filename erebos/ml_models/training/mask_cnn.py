@@ -1,15 +1,9 @@
-import logging
-
-
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 
 from .base_cnn import BatchedZarrData, make_train_func, dist_trainer
-
-
-logger = logging.getLogger(__name__)
 
 
 class MaskData(BatchedZarrData):
