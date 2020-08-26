@@ -24,12 +24,17 @@ class CloudHeightUNet(MaskUNet):
         fin_chan = 32
         self.out = nn.Sequential(
             nn.Conv2d(fin_chan, n_classes, kernel_size=1, stride=1),
-            nn.Linear(n_classes, n_classes),
         )
         for parameter in self.parameters():
             parameter.requires_grad = False
         for parameter in self.out.parameters():
             parameter.requires_grad = True
+        self.linout = nn.Linear(n_classes, n_classes)
+
+    def forward(self, x):
+        x = super().forward(x)
+        x = self.linout(x.transpose(1, -1)).transpose(1, -1)
+        return x
 
 
 class HeightLoss(nn.MSELoss):
@@ -85,20 +90,20 @@ def dist_train(
     model = CloudHeightUNet(18, 1, padding, use_max_pool, padding_mode=padding_mode)
 
     map_location = {"cuda:0": "cpu"} if cpu else {"cuda:0": f"cuda:{rank:d}"}
-    mask_model_dict = torch.load(mask_model_load_from, map_location=map_location)[
-        "model_state_dict"
-    ]
-
-    state_dict = {}
-    for k in mask_model_dict.keys():
-        nk = k[len("module.") :]
-        # replace weights, but keep out layer at random
-        if nk.startswith("out"):
-            state_dict[nk] = model.state_dict()[nk]
-        else:
-            state_dict[nk] = mask_model_dict[k]
-
-    model.load_state_dict(state_dict)
+    mask_model_dict = {
+        k[len("module.") :]: v
+        for k, v in torch.load(mask_model_load_from, map_location=map_location)[
+            "model_state_dict"
+        ].items()
+    }
+    mask_model_dict.update(
+        {
+            k: v
+            for k, v in model.state_dict().items()
+            if k.startswith("out") or k not in mask_model_dict
+        }
+    )
+    model.load_state_dict(mask_model_dict)
     loss_func = HeightLoss()
     val_dataset = CloudHeightData(val_path, batch_size, adjusted=adj_for_cloud)
     return dist_trainer(
