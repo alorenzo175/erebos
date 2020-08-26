@@ -318,48 +318,65 @@ def cloud_mask(
     )
 
 
+def cnn_options(cmd):
+    """Combine common cnn options into a single decorator"""
+
+    def options_wrapper(f):
+        decs = [
+            click.argument("experiment_name"),
+            click.argument("rank", type=int),
+            click.argument("world-size", type=int),
+            click.option("--run-name"),
+            click.option("--load-from-run"),
+            click.option("--backend", default="gloo"),
+            click.option(
+                "--master-addr",
+                envvar="MASTER_ADDR",
+                show_envvar=True,
+                default="localhost",
+            ),
+            click.option(
+                "--master-port", envvar="MASTER_PORT", show_envvar=True, type=str
+            ),
+            click.option(
+                "--train-path",
+                type=PathParamType(resolve_path=True),
+                default=Path(__file__).parent / "../../data/cloud_mask/train.zarr",
+                envvar="TRAIN_PATH",
+                show_envvar=True,
+            ),
+            click.option(
+                "--validate-path",
+                type=PathParamType(resolve_path=True),
+                default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
+                envvar="VALIDATE_PATH",
+                show_envvar=True,
+            ),
+            click.option("--cpu", is_flag=True),
+            click.option("--epochs", type=int, default=500),
+            click.option("--use-mixed-precision", is_flag=True),
+            click.option("--loader-workers", type=int, default=0,),
+            click.option("--learning-rate", type=float, default=1e-3),
+            click.option("--optimizer", default="adam"),
+        ]
+        for dec in reversed(decs):
+            f = dec(f)
+        return f
+
+    return options_wrapper(cmd)
+
+
 @train.command()
 @verbose
 @mlflow_options
-@click.argument("experiment_name")
-@click.argument("rank", type=int)
-@click.argument("world-size", type=int)
-@click.option("--run-name")
-@click.option("--batch-size", type=int, default=600)
-@click.option("--load-from-run")
-@click.option("--backend", default="gloo")
+@cnn_options
 @click.option(
-    "--master-addr", envvar="MASTER_ADDR", show_envvar=True, default="localhost"
-)
-@click.option("--master-port", envvar="MASTER_PORT", show_envvar=True, type=str)
-@click.option(
-    "--train-path",
-    type=PathParamType(resolve_path=True),
-    default=Path(__file__).parent / "../../data/cloud_mask/train.zarr",
-    envvar="TRAIN_PATH",
-    show_envvar=True,
-)
-@click.option(
-    "--validate-path",
-    type=PathParamType(resolve_path=True),
-    default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
-    envvar="VALIDATE_PATH",
-    show_envvar=True,
-)
-@click.option("--cpu", is_flag=True)
-@click.option("--epochs", type=int, default=500)
-@click.option("--adj-for-cloud", is_flag=True)
-@click.option("--use-max-pool/--dont-use-max-pool", is_flag=True, default=True)
-@click.option("--use-mixed-precision", is_flag=True)
-@click.option(
-    "--loader-workers", type=int, default=0,
-)
-@click.option("--learning-rate", type=float, default=1e-3)
-@click.option("--optimizer", default="adam")
-@click.option(
-    "--padding", default=1, type=int, help="will probably break model when changed"
+    "--padding", default=1, type=int, help="will probably break model when changed",
 )
 @click.option("--padding-mode", default="zeros")
+@click.option("--use-max-pool/--dont-use-max-pool", is_flag=True, default=True)
+@click.option("--adj-for-cloud", is_flag=True)
+@click.option("--batch-size", type=int, default=600)
 def cloud_mask_cnn(
     experiment_name,
     run_name,
@@ -431,39 +448,8 @@ def cloud_mask_cnn(
 @train.command()
 @verbose
 @mlflow_options
-@click.argument("experiment_name")
-@click.argument("rank", type=int)
-@click.argument("world-size", type=int)
+@cnn_options
 @click.argument("mask-model-load-from")
-@click.option("--run-name")
-@click.option("--load-from-run")
-@click.option("--backend", default="gloo")
-@click.option(
-    "--master-addr", envvar="MASTER_ADDR", show_envvar=True, default="localhost"
-)
-@click.option("--master-port", envvar="MASTER_PORT", show_envvar=True, type=str)
-@click.option(
-    "--train-path",
-    type=PathParamType(resolve_path=True),
-    default=Path(__file__).parent / "../../data/cloud_mask/train.zarr",
-    envvar="TRAIN_PATH",
-    show_envvar=True,
-)
-@click.option(
-    "--validate-path",
-    type=PathParamType(resolve_path=True),
-    default=Path(__file__).parent / "../../data/cloud_mask/validate.zarr",
-    envvar="VALIDATE_PATH",
-    show_envvar=True,
-)
-@click.option("--cpu", is_flag=True)
-@click.option("--epochs", type=int, default=500)
-@click.option("--use-mixed-precision", is_flag=True)
-@click.option(
-    "--loader-workers", type=int, default=0,
-)
-@click.option("--learning-rate", type=float, default=1e-3)
-@click.option("--optimizer", default="adam")
 def cloud_type_cnn(
     experiment_name,
     run_name,
@@ -509,6 +495,79 @@ def cloud_type_cnn(
         load_from = None
 
     training.cloudtype_cnn.train(
+        run_name,
+        rank=rank,
+        world_size=world_size,
+        backend=backend,
+        train_path=str(train_path),
+        val_path=str(validate_path),
+        batch_size=int(mask_params["batch_size"]),
+        mask_model_load_from=mask_load_from,
+        load_from=load_from,
+        epochs=epochs,
+        adj_for_cloud=int(mask_params["adj_cloud_locations"]),
+        use_mixed_precision=use_mixed_precision,
+        loader_workers=loader_workers,
+        cpu=cpu,
+        log_level="DEBUG" if verbose > 1 else "INFO",
+        use_max_pool=bool(mask_params["use_max_pooling"]),
+        learning_rate=learning_rate,
+        use_optimizer=optimizer,
+        padding=int(mask_params["padding"]),
+        padding_mode=mask_params["padding_mode"],
+    )
+
+
+@train.command()
+@verbose
+@mlflow_options
+@cnn_options
+@click.argument("mask-model-load-from")
+def cloud_height_cnn(
+    experiment_name,
+    run_name,
+    train_path,
+    validate_path,
+    rank,
+    world_size,
+    backend,
+    mask_model_load_from,
+    load_from_run,
+    master_addr,
+    master_port,
+    epochs,
+    use_mixed_precision,
+    loader_workers,
+    cpu,
+    verbose,
+    learning_rate,
+    optimizer,
+):
+    """Train a Unet CNN to predict a cloud height"""
+    import torch.multiprocessing as mp
+
+    os.environ["MASTER_ADDR"] = master_addr
+    if master_port is None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        master_port = str(s.getsockname()[1])
+        s.close()
+    os.environ["MASTER_PORT"] = master_port
+
+    logger.info("Using tracking URI %s", mlflow.tracking.get_tracking_uri())
+    mlflow.set_experiment(experiment_name)
+    mrun, mepoch = mask_model_load_from.split(":")
+    client = mlflow.tracking.MlflowClient()
+    mask_load_from = client.download_artifacts(mrun, f"cloud_mask_unet.chk.{mepoch}")
+    mask_params = client.get_run(mrun).data.params
+    if load_from_run is not None:
+        run, epoch = load_from_run.split(":")
+        load_from = client.download_artifacts(run, f"cloud_height_unet.chk.{epoch}")
+    else:
+        load_from = None
+
+    training.cloudheight_cnn.train(
         run_name,
         rank=rank,
         world_size=world_size,
